@@ -41,11 +41,20 @@ function CookingChatbot({ apiKey }) {
     let requestLog = null, responseLog = null, errorLog = null;
 
     try {
-      // Prepare chat history in Cohere's expected format
+      // Prepare chat history in Cohere's expected format with correct role capitalization
+      const roleMap = {
+        "user": "User",
+        "assistant": "Chatbot",
+        "system": "System",
+        "tool": "Tool"
+      };
       const msgs = messages
         .concat({ role: "user", text: userMsg })
         .slice(-10)
-        .map(m => ({ role: m.role, message: m.text }));
+        .map(m => ({
+          role: roleMap[m.role] || m.role,
+          message: m.text
+        }));
 
       // Compose request details for debug log
       requestLog = {
