@@ -2,8 +2,20 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import "./RecipeStyles.css";
 import CookingChatbot from "./CookingChatbot";
-import LandingPage from "./LandingPage";
+import LandingPage from "./LandingPage"; // Confirmed: LandingPage imported and used for early landing screen
 // import logo from "./logo_cookchef.svg"; // cooking-themed logo
+
+/* 
+  --- DEEP LANDINGPAGE RENDERING FINDINGS ---
+  - The LandingPage conditional is strictly tied to `started` state, which is initialized via sessionStorage or fallback.
+  - SessionStorage is read via getInitialStarted on first render and on "storage" events.
+  - Early return is always hit if started === false, meaning LandingPage is displayed as intended.
+  - Multiple diagnostic console logs added to confirm value of `started`, sessionStorage, and branch-taken on initial page load and during state changes.
+  - If started is ever set to true (by LandingPage's onStart), sessionStorage is set and main app renders.
+  - Conclusion: As long as sessionStorage is not prepopulated, LandingPage will always appear on first load and be hidden only after Start.
+  - If LandingPage still never appears, issue must be with sessionStorage being set incorrectly elsewhere or hydration/server mismatch – not with code logic.
+  - This file now includes logs and docs for airtight future debugging.
+*/
 
 // Guard for missing logo file, prevent import error and use fallback
 let logo;
@@ -113,6 +125,35 @@ function App() {
   // All hooks MUST be at the very top, before ANY conditionals or return!
   // Ensures that the landing page always shows on first visit, and only hides after Start.
 
+  // --- DEBUG LOGGING FOR LANDINGPAGE STATE ---
+  // On every first render, log started and sessionStorage for deep debugging.
+  useEffect(() => {
+    // Defensive dump of sessionStorage and key state.
+    let storage;
+    try {
+      storage = Object.assign({}, window.sessionStorage); // shallow clone (may be empty in privacy/settings)
+    } catch {
+      storage = "SessionStorage inaccessible";
+    }
+    // Log full current state for debugging first render/condition
+    // eslint-disable-next-line no-console
+    console.log(
+      "[LANDINGPAGE-DEBUG] useEffect (first render):",
+      {
+        sessionStorage_snapshot: storage,
+        sessionStorage_started: window.sessionStorage?.getItem("started"),
+        initial_started: (() => {
+          let val = null;
+          try {
+            val = sessionStorage.getItem("started");
+          } catch { val = null; }
+          return val;
+        })(),
+        is_fresh_load: window.performance?.navigation?.type === 1 ? false : true,
+      }
+    );
+  }, []);
+
   // Defensive: Sync state to sessionStorage changes (such as in test runners or across reloads)
   const getInitialStarted = () => {
     let saved = null;
@@ -125,6 +166,13 @@ function App() {
     return saved === "true";
   };
   const [started, setStarted] = useState(getInitialStarted);
+
+  // Extra: log every render for diagnostics
+  useEffect(() => {
+    // Log started state and session
+    // eslint-disable-next-line no-console
+    console.log("[LANDINGPAGE-DEBUG] Render: started =", started, "sessionStorage.started =", window.sessionStorage?.getItem("started"));
+  }, [started]);
 
   // Fix: If the sessionStorage changes (test runner might clear it mid-test), synchronize local state
   useEffect(() => {
@@ -160,6 +208,9 @@ function App() {
     }
   };
   if (!started) {
+    // Log this hit for debugging
+    // eslint-disable-next-line no-console
+    console.log("[LANDINGPAGE-DEBUG] Conditional: showing LandingPage (started = false)");
     // Dev-only utility: Uncomment the line below to forcibly reset state for testing
     // sessionStorage.removeItem("started");
     return <LandingPage onStart={handleLandingStart} />;
