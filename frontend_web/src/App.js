@@ -514,37 +514,101 @@ function SmartTags({ tags }) {
   );
 }
 
-// NutritionBars: shows color-coded bars for macronutrients
+/*
+  NutritionBars: Enhanced color-coded nutrition bars with clear, explicit labels and values.
+  - Each bar row contains the label (e.g., "Protein (g)", "Carbs (g)", etc.) next to the colored bar,
+    AND the value is displayed in bold beside the bar for clarity.
+  - Calories are shown in kcal, others in grams.
+  - For prominent display: values use bold styling; bars have larger contrast text.
+  - Responsive and WCAG-friendly for color/labelling.
+  Always shown on recipes; showLabels prop can force left labels in modals.
+*/
 function NutritionBars({ nutrition, showLabels }) {
   // nutrition: {calories, carbs, fats, protein}
   if (!nutrition) return null;
+  // Prepare all macro stats; keep max values reasonable to cap bars for common recipes
   const stats = [
-    { key: "calories", label: "Calories", max: 700 },
-    { key: "carbs", label: "Carbs (g)", max: 60 },
-    { key: "fats", label: "Fats (g)", max: 40 },
-    { key: "protein", label: "Protein (g)", max: 40 },
+    {
+      key: "calories",
+      label: "Calories",
+      max: 700,
+      getDisplay: v => `${v} kcal`,
+      help: "Total calories (kcalories)"
+    },
+    {
+      key: "carbs",
+      label: "Carbs",
+      max: 60,
+      getDisplay: v => `${v} g`,
+      help: "Carbohydrates (grams)"
+    },
+    {
+      key: "fats",
+      label: "Fats",
+      max: 40,
+      getDisplay: v => `${v} g`,
+      help: "Fats (grams)"
+    },
+    {
+      key: "protein",
+      label: "Protein",
+      max: 40,
+      getDisplay: v => `${v} g`,
+      help: "Protein (grams)"
+    },
   ];
   return (
-    <div className="nutrition-bars">
+    <div className="nutrition-bars enhanced-nutrition">
       {stats.map((stat) => {
-        const value = nutrition[stat.key] || 0;
+        const value = nutrition[stat.key] !== undefined ? nutrition[stat.key] : 0;
         const pct = Math.min(100, Math.round((value / stat.max) * 100));
+        // Left label for clarity - always show label, and display legend for color association
         return (
-          <div className="nutrition-bar-row" key={stat.key}>
-            {showLabels && (
-              <div className="nutrition-bar-label">{stat.label}</div>
-            )}
-            <div className="nutrition-bar-tray">
+          <div className="nutrition-bar-row enhanced-row" key={stat.key}>
+            <span
+              className="nutrition-bar-label enhanced-label"
+              title={stat.help}
+              style={{
+                minWidth: 90,
+                fontWeight: 700,
+                color: getBarColor(stat.key),
+                letterSpacing: stat.key === "calories" ? "0.5px" : "0"
+              }}
+            >
+              {stat.label}
+            </span>
+            <div className="nutrition-bar-tray enhanced-tray">
               <div
-                className="nutrition-bar"
+                className="nutrition-bar enhanced-bar"
                 style={{
                   width: `${pct}%`,
                   backgroundColor: getBarColor(stat.key),
+                  color: stat.key === "calories" ? "#fff8" : "#fff",
+                  border: "1.5px solid #fff3",
+                  position: "relative"
                 }}
-                aria-label={`${stat.label}: ${value}`}
+                aria-label={`${stat.label}: ${value}${stat.key === "calories" ? " kcal" : " g"}`}
               >
-                <span className="nutrition-bar-text">{value}</span>
+                {/* Value inside bar only for high %; else show outside */}
+                {(pct > 35) ? (
+                  <span className="nutrition-bar-text enhanced-text">
+                    {stat.getDisplay(value)}
+                  </span>
+                ) : null}
               </div>
+              {/* Value always at right, not in bar if bar is short */}
+              <span
+                className="nutrition-value-outside"
+                style={{
+                  marginLeft: "0.55em",
+                  fontWeight: 700,
+                  color: "#23272a",
+                  minWidth: 45,
+                  textAlign: "right"
+                }}
+              >
+                {(pct <= 35) ? stat.getDisplay(value) : ""}
+              </span>
             </div>
           </div>
         );
