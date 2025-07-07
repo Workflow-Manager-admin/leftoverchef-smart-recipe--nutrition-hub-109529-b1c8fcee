@@ -39,6 +39,68 @@ const getBarColor = (nutrient) => {
 // Dummy images fallback for recipes
 const DUMMY_IMG = "https://source.unsplash.com/300x200/?recipe,food,healthy";
 
+/* --- API DEBUG STATE & CONTEXT (for logging API/network payloads and errors in UI) --- */
+const ApiDebugContext = React.createContext();
+function useApiDebug() {
+  return React.useContext(ApiDebugContext);
+}
+
+/**
+ * DEEP API DEBUG PANEL: displays network logs, raw responses, and error state for developer/user
+ */
+function ApiDebugPanel() {
+  // API debug context contains last request, response, error
+  const { request, response, error } = useApiDebug() || {};
+  if (!request && !response && !error) return null;
+  // Only show if something interesting happened
+  return (
+    <div style={{
+      marginTop: 30,
+      marginBottom: 22,
+      border: "2px dashed #4056a1",
+      borderRadius: 12,
+      background: "#f6f9ff",
+      color: "#162146",
+      padding: "1.1em 1.1em 0.8em",
+      fontSize: "1em",
+      textAlign: "left",
+      maxWidth: 900,
+      overflowX: "auto",
+      boxShadow: "0 1.5px 7px #8881"
+    }}>
+      <div style={{ fontWeight: 800, color: "#4056a1", fontSize: "1.06em", marginBottom: 2  }}>
+        Debug/Network (API Log)
+      </div>
+      <div>
+        <span style={{ fontWeight: 500 }}>Last Request:</span>
+        <pre style={{ margin: 0, background: "#e6edf3", borderRadius: 7, fontSize: 13, padding: 8, overflowX: "auto" }}>
+          {request ? JSON.stringify(request, null, 2) : "--"}
+        </pre>
+      </div>
+      <div>
+        <span style={{ fontWeight: 500 }}>Last Response:</span>
+        <pre style={{ margin: 0, background: "#e6f3ea", borderRadius: 7, fontSize: 13, padding: 8, overflowX: "auto" }}>
+          {response ? JSON.stringify(response, null, 2) : "--"}
+        </pre>
+      </div>
+      <div>
+        <span style={{ fontWeight: 500 }}>Error/Message:</span>
+        <pre style={{ margin: 0, background: "#feeee8", borderRadius: 7, fontSize: 13, padding: 8, overflowX: "auto", color: "#ea4335" }}>
+          {error ? String(error) : "--"}
+        </pre>
+        {(error && (typeof error === "string") && (error.match(/quota|key|invalid/i))) &&
+          <div style={{
+            marginTop: 7, background: "#fee", color: "#b11318", padding: "4px 9px", borderRadius: 8, fontWeight: 700, fontSize: "0.98em"
+          }}>
+            Spoonacular API quota exceeded or invalid key! Check your API usage.<br />
+            <a href="https://spoonacular.com/food-api/docs#Errors" target="_blank" rel="noreferrer">Docs: Spoonacular API Errors</a>
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
+
 // PUBLIC_INTERFACE
 function App() {
   const [theme] = useState("light"); // Future: support theme switch if needed
@@ -48,6 +110,9 @@ function App() {
   const [favorites, setFavorites] = useState([]);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // For API/network logs and errors (debug flows UI)
+  const [apiDebug, setApiDebug] = useState({ request: null, response: null, error: null });
 
   // PUBLIC_INTERFACE
   // Handles addition of ingredients from input
@@ -90,13 +155,13 @@ function App() {
   };
 
   // PUBLIC_INTERFACE
-  // Handles API call to get live recipe suggestions from Spoonacular API (REFINED: fetch full details for each result to guarantee nutrition + steps)
+  // Handles API call to get live recipe suggestions from Spoonacular API (instrumented for network debug + fallback patch)
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Prepare ingredient list for query; LOG raw and mapped ingredient data
+    // Prepare ingredient list for query
     console.log("[DEBUG] ingredientList raw state:", ingredientList);
     const includedIngredientsArr = ingredientList.filter((item) => item.selected);
     console.log("[DEBUG] Filtered selected ingredientList array:", includedIngredientsArr);
@@ -105,51 +170,91 @@ function App() {
       .map((item) => item.name)
       .join(",");
 
-    // --- LOGGING/DEBUG --- Outgoing ingredient search params and all detail
+    // LOGGING/DEBUG: show outgoing ingredient params
     console.log(
       "[RecipeSearch] IncludedIngredients for search STRING:",
       includedIngredients
     );
     console.log("[RecipeSearch] Full outgoing ingredientList array for API:", JSON.stringify(includedIngredientsArr, null, 2));
 
+    // API DEBUG STATE: initialize/clear before run
+    setApiDebug({ request: null, response: null, error: null });
+
     if (!includedIngredients) {
       setLoading(false);
+      setApiDebug({
+        request: null,
+        response: null,
+        error: "No included ingredients selected for search."
+      });
       alert("Please select at least one ingredient before searching for recipes.");
       return;
     }
 
     // Use provided API key directly for now (NOTE: not safe for prod!)
     const apiKey = "dc49e1088db742eea575fd4596dee395";
+    // Track the current request payload for debug panel
+    let debugRequest = {
+      type: "complexSearch",
+      url: "",
+      method: "GET",
+      includedIngredients,
+      headers: {},
+      apiKey
+    };
 
     try {
-      // 1. Search recipes by ingredient (only fetch light info & IDs first)
+      // 1. Search recipes by ingredients (complexSearch)
       const searchUrl = `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
         includedIngredients
       )}&number=6&instructionsRequired=true&apiKey=${apiKey}`;
+      debugRequest.url = searchUrl;
       console.log("[RecipeSearch] Outbound: complexSearch URL", searchUrl);
 
       const searchResp = await fetch(searchUrl);
 
       // Log status and headers
       console.log("[RecipeSearch] complexSearch response status:", searchResp.status, "ok:", searchResp.ok);
+      let searchDebugHeaders = {};
       try {
         for (const [k, v] of searchResp.headers.entries()) {
+          searchDebugHeaders[k] = v;
           console.log(`[RecipeSearch] searchResp header: ${k}:`, v);
         }
       } catch (_e) {}
+      debugRequest.headers = searchDebugHeaders;
 
+      // PATCH: capture raw error bodies for quota/key issues
       if (!searchResp.ok) {
-        // Try to read body for error details
         let errTxt = "";
         try { errTxt = await searchResp.text(); } catch {}
+        // Try parse error for quota/key
+        let errMsg = "API connection failed: " + searchResp.status + " " + errTxt;
+        setApiDebug({
+          request: debugRequest,
+          response: null,
+          error: errMsg
+        });
         console.error("[RecipeSearch] API connection failed: ", searchResp.status, errTxt);
-        throw new Error("API connection failed: " + searchResp.status + " " + errTxt);
+        // Attempt to read Spoonacular json error (sometimes has helpful .message)
+        let tryJson = null;
+        try { tryJson = JSON.parse(errTxt); } catch {}
+        if (tryJson && tryJson.message) {
+          errMsg += `\n[API.message] ${tryJson.message}`;
+        }
+        throw new Error(errMsg);
       }
+
       let searchData;
       try {
         searchData = await searchResp.json();
       } catch (jsonErr) {
         console.error("[RecipeSearch] ERROR: .json() failed parsing for complexSearch resp!", jsonErr);
+        setApiDebug({
+          request: debugRequest,
+          response: null,
+          error: "API response could not be parsed as JSON: " + (jsonErr?.message || String(jsonErr))
+        });
         setRecipes([{
           id: "fail-json",
           name: "API JSON error",
@@ -165,8 +270,41 @@ function App() {
         return;
       }
       console.log("[RecipeSearch] complexSearch response data (JSON):", searchData);
+      setApiDebug({
+        request: debugRequest,
+        response: searchData,
+        error: null
+      });
 
-      if (!searchData.results || searchData.results.length === 0) {
+      // PATCH: Show quota/invalid key as explicit UI error if present
+      if ("message" in searchData && (searchData.message || "").match(/quota|key/i)) {
+        let apiMessage = searchData.message;
+        setApiDebug({
+          request: debugRequest,
+          response: searchData,
+          error: apiMessage
+        });
+        setRecipes([{
+          id: "spoonacular-api-message",
+          name: "API Error",
+          image: DUMMY_IMG,
+          ingredients: [],
+          steps: [],
+          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+          tags: [],
+          error: "Spoonacular API error: " + apiMessage
+        }]);
+        setLoading(false);
+        alert("Spoonacular API error: " + apiMessage);
+        return;
+      }
+
+      if (!searchData.results || !Array.isArray(searchData.results) || searchData.results.length === 0) {
+        setApiDebug({
+          request: debugRequest,
+          response: searchData,
+          error: "Empty results from API"
+        });
         setRecipes([]);
         setLoading(false);
         alert(
@@ -177,7 +315,7 @@ function App() {
         return;
       }
 
-      // 2. For each recipe, fetch /recipes/{id}/information to guarantee detailed steps & nutrition
+      // 2. For each recipe, fetch /information (detailed data)
       const recipesData = await Promise.all(
         searchData.results.map(async (basicRecipe) => {
           try {
@@ -185,12 +323,10 @@ function App() {
             console.log("[RecipeSearch] Outbound: recipe/information URL", infoUrl);
 
             const infoResp = await fetch(infoUrl);
-            console.log(
-              `[RecipeSearch] /information resp for recipe ${basicRecipe.id} status:`,
-              infoResp.status, "ok:", infoResp.ok
-            );
+            let infoDebugHeaders = {};
             try {
               for (const [k, v] of infoResp.headers.entries()) {
+                infoDebugHeaders[k] = v;
                 console.log(`[RecipeSearch] infoResp (${basicRecipe.id}) header: ${k}:`, v);
               }
             } catch (_e) {}
@@ -198,14 +334,24 @@ function App() {
             if (!infoResp.ok) {
               let infoErr = "";
               try { infoErr = await infoResp.text(); } catch {}
+              const errMsg = "Missing info for recipe " + basicRecipe.id + ": " + infoResp.status + " " + infoErr;
+              // This doesn't overwrite root API debug panel, but logs for dev
+              setApiDebug((old) => ({
+                ...(old || {}),
+                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoErr }
+              }));
               console.error("[RecipeSearch] Info load failed", infoResp.status, infoErr);
-              throw new Error("Missing info for recipe " + basicRecipe.id + ": " + infoResp.status + " " + infoErr);
+              throw new Error(errMsg);
             }
 
             let info;
             try {
               info = await infoResp.json();
             } catch (jsonErr) {
+              setApiDebug((old) => ({
+                ...(old || {}),
+                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoJsonError: jsonErr?.message }
+              }));
               console.error(`[RecipeSearch] ERROR: .json() failed for recipe id=${basicRecipe.id}:`, jsonErr);
               return {
                 id: basicRecipe.id,
@@ -289,6 +435,10 @@ function App() {
             };
           } catch (innerErr) {
             // Gracefully show fallback for this recipe if fetch failed
+            setApiDebug((old) => ({
+              ...(old || {}),
+              infoRecipe: { id: basicRecipe.id, innerErr: innerErr?.message || String(innerErr) }
+            }));
             console.error("[RecipeSearch] Error loading recipe details for id", basicRecipe.id, innerErr);
             return {
               id: basicRecipe.id,
@@ -307,6 +457,10 @@ function App() {
       console.log("[RecipeSearch] Final recipesData after mapping/Promise.all:", recipesData);
 
       if (!Array.isArray(recipesData)) {
+        setApiDebug((old) => ({
+          ...(old || {}),
+          error: "recipesData not array after Promise.all"
+        }));
         setRecipes([]);
         alert("Internal error: result from recipe server not an array. See console for details.");
         return;
@@ -314,25 +468,43 @@ function App() {
       // Defensive: filter out any undefined/null recipe results (shouldn't happen)
       const cleanRecipes = recipesData.filter((r) => r && r.id && r.name);
       if (recipesData.length !== cleanRecipes.length) {
+        setApiDebug((old) => ({
+          ...(old || {}),
+          error: `Filtered out ${recipesData.length - cleanRecipes.length} invalid results from recipesData`
+        }));
         console.warn(
           `[RecipeSearch] Cleaned ${recipesData.length - cleanRecipes.length} undefined/null results from recipesData`,
           recipesData
         );
       }
-      setRecipes(cleanRecipes.length ? cleanRecipes : [{
-        id: "no-valid",
-        name: "No Valid Recipes Found",
-        image: DUMMY_IMG,
-        ingredients: [],
-        steps: [],
-        nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-        tags: [],
-        error: "No complete or valid recipes could be parsed for this ingredient selection.",
-      }]);
+      // PATCH: guarantee recipes shown if we got any valid, else show raw state/debug
+      if (cleanRecipes.length > 0) {
+        setRecipes(cleanRecipes);
+      } else {
+        setApiDebug((old) => ({
+          ...(old || {}),
+          error: `No valid recipes extracted, raw recipesData: ${JSON.stringify(recipesData)}`
+        }));
+        setRecipes([{
+          id: "no-valid",
+          name: "No Valid Recipes Found",
+          image: DUMMY_IMG,
+          ingredients: [],
+          steps: [],
+          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+          tags: [],
+          error: "No complete or valid recipes could be parsed for this ingredient selection. (Check API quota and ingredients; see debug log below)."
+        }]);
+      }
     } catch (e) {
       setRecipes([]);
+      let message = "[RecipeSearch] ERROR in handleFindRecipes (main try/catch): " + (e?.message || String(e));
+      setApiDebug((old) => ({
+        ...(old || {}),
+        error: message
+      }));
       // eslint-disable-next-line
-      console.error("[RecipeSearch] ERROR in handleFindRecipes (main try/catch):", e);
+      console.error(message);
       // Show on page (user and developer)
       setRecipes([{
         id: "fail",
@@ -351,6 +523,10 @@ function App() {
         (e?.message && (e.message.includes("quota") || e.message.includes("key"))) ||
         /quota|key/i.test(e?.toString?.() || "")
       ) {
+        setApiDebug((old) => ({
+          ...(old || {}),
+          error: "Spoonacular API quota may be exceeded or API key is invalid."
+        }));
         console.warn(
           "[RecipeSearch][UserHelp] Spoonacular API quota may be exceeded or API key is invalid. See https://spoonacular.com/food-api/docs#Errors for more info or request a new key."
         );
@@ -361,7 +537,7 @@ function App() {
       );
     } finally {
       setLoading(false);
-      // Always log state after attempt
+      // Log most recent recipes state
       setTimeout(() => {
         console.log("[RecipeSearch] Post-fetch: Final recipes state in memory:", recipes);
       }, 500);
@@ -495,6 +671,8 @@ function App() {
               isFav={isFavorite}
             />
           </section>
+          {/* --- DEEP API DEBUG PANEL: show last raw Spoonacular API response and errors --- */}
+          <ApiDebugPanel />
         </main>
 
         {/* Recipe Details Modal/Panel */}
@@ -867,4 +1045,5 @@ function NutritionBars({ nutrition, showLabels }) {
   );
 }
 
+export { ApiDebugContext };
 export default App;
