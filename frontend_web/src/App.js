@@ -717,29 +717,53 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
     );
   }
 
+  // Hover overlay logic: state for currently hovered card if needed in future extensibility
+  // For now, pure CSS overlay, but could be adopted to React Tooltip or Popover if desired
+
   return (
     <div className="recipe-list">
       {recipes.map((r) => (
-        <div className="recipe-card" key={r.id}>
+        <div className="recipe-card recipe-card-hoverable" key={r.id} tabIndex={0}>
           <img
             src={r.image || DUMMY_IMG}
             className="recipe-thumb"
             alt={r.name}
             onClick={() => onOpen(r)}
           />
+          {/* HOVER OVERLAY (ingredients + instructions) */}
+          <div className="recipe-hover-overlay" role="tooltip">
+            <div className="recipe-hover-title">{r.name}</div>
+            <div className="recipe-hover-section">
+              <strong>Ingredients:</strong>
+              <ul className="hover-ingredients-list">
+                {(Array.isArray(r.ingredients) && r.ingredients.length > 0)
+                  ? r.ingredients.map((ing, idx) => <li key={idx}>{ing}</li>)
+                  : <li className="muted">No ingredients available.</li>
+                }
+              </ul>
+            </div>
+            <div className="recipe-hover-section">
+              <strong>Instructions:</strong>
+              {/* Show instructions as a numbered list if length > 1 */}
+              {(Array.isArray(r.steps) && r.steps.length > 0 && (r.steps.length > 1 || (r.steps[0] && r.steps[0].trim())))
+                ? (
+                  <ol className="hover-steps-list">
+                    {r.steps.map((step, idx) => <li key={idx}>{step}</li>)}
+                  </ol>
+                ) : (
+                  <div className="muted" style={{ margin: "0.4em 0" }}>
+                    No instructions available.
+                  </div>
+                )
+              }
+            </div>
+          </div>
           <div className="recipe-summary">
             <div className="recipe-card-title" onClick={() => onOpen(r)}>
               {r.name}
             </div>
             <SmartTags tags={r.tags} />
-
-            <div className="recipe-small-text">
-              <span>
-                Prep time: {r.prep_time && typeof r.prep_time === "string"
-                  ? r.prep_time
-                  : "Prep time not available"}
-              </span>
-            </div>
+            {/* Removed prep time line */}
             <NutritionBars nutrition={r.nutrition} />
             {/* Nutritionix error or rate limit info, show in small muted text under bars if available */}
             {r.nutritionixError && (
