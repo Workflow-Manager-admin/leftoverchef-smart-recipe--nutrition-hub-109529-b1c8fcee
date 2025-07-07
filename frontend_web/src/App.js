@@ -357,12 +357,52 @@ function App() {
             }
             // --- End Nutritionix integration ---
 
+            // Helper to map/parse a sensible prep time, as TheMealDB lacks explicit prep time fields.
+            // Prefer strTags (look for duration info), fallback to strArea as a fake, else null.
+            function getPrepTimeString(mealObj) {
+              // TheMealDB does NOT have a prep-time field.
+              // Sometimes people put time in strTags or strInstructions, but it's not structured.
+              // We'll check (as a bonus) strTags for minute/hour pattern
+              let tagRaw = mealObj.strTags || "";
+              let tagTimeMatch = tagRaw.match(/(\d+)\s*(min|minute|minutes|hr|hour|hours)/i);
+              if (tagTimeMatch && tagTimeMatch[1]) {
+                return formatPrepTime(Number(tagTimeMatch[1]), (tagTimeMatch[2]||"min").toLowerCase());
+              }
+              // As a complete fallback, check instructions for explicit timings e.g. "Bake for 40 minutes"
+              if (mealObj.strInstructions) {
+                let instr = mealObj.strInstructions;
+                let timeMatch = instr.match(/(\d+)\s*(min|minute|minutes|hr|hour|hours)/i);
+                if (timeMatch && timeMatch[1]) {
+                  return formatPrepTime(Number(timeMatch[1]), (timeMatch[2]||"min").toLowerCase());
+                }
+              }
+              // Fallback: "--" for not available
+              return null;
+            }
+            function formatPrepTime(val, unit) {
+              // Standardize user-friendly display
+              if (!val || !unit) return null;
+              if (unit.startsWith("hr")) {
+                if (val === 1) return "1 hour";
+                return `${val} hours`;
+              }
+              // Assume minutes for "min" and variants
+              if (unit.startsWith("min")) {
+                return `${val} min`;
+              }
+              // Fallback: just value and unit
+              return `${val} ${unit}`;
+            }
+
+            // Derive the prep time, with fallback placeholder
+            let prepTime = getPrepTimeString(meal) || "Prep time not available";
+
             // Return full recipe (including per-recipe nutrition and error)
             return {
               id: meal.idMeal,
               name: meal.strMeal,
               image: meal.strMealThumb,
-              prep_time: meal.strArea || "--",
+              prep_time: prepTime,
               ingredients,
               steps,
               nutrition, // calories, protein, fat, carbs (for UI)
@@ -694,7 +734,11 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             <SmartTags tags={r.tags} />
 
             <div className="recipe-small-text">
-              <span>Prep time: {r.prep_time} min</span>
+              <span>
+                Prep time: {r.prep_time && typeof r.prep_time === "string"
+                  ? r.prep_time
+                  : "Prep time not available"}
+              </span>
             </div>
             <NutritionBars nutrition={r.nutrition} />
             {/* Nutritionix error or rate limit info, show in small muted text under bars if available */}
@@ -757,7 +801,11 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
         ) : null}
         <SmartTags tags={recipe.tags} />
         <div className="modal-subtext">
-          <span>Prep time: {recipe.prep_time} min</span>
+          <span>
+            Prep time: {recipe.prep_time && typeof recipe.prep_time === "string"
+              ? recipe.prep_time
+              : "Prep time not available"}
+          </span>
         </div>
         <h4>Ingredients:</h4>
         <ul className="modal-ingredients-list">
