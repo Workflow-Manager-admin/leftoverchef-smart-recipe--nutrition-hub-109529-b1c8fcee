@@ -1,12 +1,16 @@
 import React from "react";
 import "./LandingPage.css";
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * LandingPage - super colorful animated landing page with extra cute (chibi) chef!
+ * - Renders on first load, hides only after Start Cooking is pressed.
+ * 
+ * @param {Object} props
+ * @param {function} props.onStart - Called when Start Cooking button is pressed
+ */
 function LandingPage({ onStart }) {
-  /**
-   * LandingPage - super colorful animated landing page with extra cute (chibi) chef!
-   * - Now with animated confetti, veggies, utensils, gradients, & cheerful bounce effects.
-   */
+  // No state or side effects; presentational only.
   return (
     <div className="landing-bg lively-bg">
       {/* Dynamic animated/floating confetti & icons */}
@@ -100,6 +104,7 @@ function LandingPage({ onStart }) {
           btn.classList.add("confetti-burst-active");
           setTimeout(() => btn.classList.remove("confetti-burst-active"), 900);
         }}
+        type="button"
       >
         <span className="cheerful-emoji" role="img" aria-label="Cute Chef">🧑‍🍳</span> Start Cooking!
       </button>
