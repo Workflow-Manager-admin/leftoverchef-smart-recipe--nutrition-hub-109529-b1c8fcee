@@ -103,8 +103,15 @@ function ApiDebugPanel() {
  */
 function App() {
   // All hooks MUST be at the very top, before ANY conditionals or return!
+  // Ensures that the landing page always shows on first visit, and only hides after Start.
   const [started, setStarted] = useState(() => {
-    const saved = sessionStorage.getItem("started");
+    let saved = null;
+    try {
+      saved = sessionStorage.getItem("started");
+    } catch (e) {
+      saved = null;
+    }
+    // If saved is exactly "true", then started is true; otherwise false (null/"false"/undefined)
     return saved === "true";
   });
   const [theme] = useState("light");
@@ -124,6 +131,8 @@ function App() {
     sessionStorage.setItem("started", "true");
   };
   if (!started) {
+    // Dev-only utility: Uncomment the line below to forcibly reset state for testing
+    // sessionStorage.removeItem("started");
     return <LandingPage onStart={handleLandingStart} />;
   }
 
