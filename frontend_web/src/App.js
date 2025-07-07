@@ -102,6 +102,9 @@ function App() {
       .map((item) => item.name)
       .join(",");
 
+    // --- LOGGING/DEBUG --- Inspect outgoing ingredient list
+    console.log("[RecipeSearch] Included ingredients for search:", includedIngredients, ingredientList);
+
     if (!includedIngredients) {
       setLoading(false);
       alert("Please select at least one ingredient before searching for recipes.");
@@ -113,13 +116,26 @@ function App() {
 
     try {
       // 1. Search recipes by ingredient (only fetch light info & IDs first)
-      const searchResp = await fetch(
-        `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
-          includedIngredients
-        )}&number=6&instructionsRequired=true&apiKey=${apiKey}`
-      );
-      if (!searchResp.ok) throw new Error("API connection failed");
+      const searchUrl = `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
+        includedIngredients
+      )}&number=6&instructionsRequired=true&apiKey=${apiKey}`;
+      console.log("[RecipeSearch] Outbound: complexSearch URL", searchUrl);
+
+      const searchResp = await fetch(searchUrl);
+
+      // Log status and headers
+      console.log("[RecipeSearch] complexSearch response status:", searchResp.status, "ok:", searchResp.ok);
+
+      if (!searchResp.ok) {
+        // Try to read body for error details
+        let errTxt = "";
+        try { errTxt = await searchResp.text(); } catch {}
+        console.error("[RecipeSearch] API connection failed: ", searchResp.status, errTxt);
+        throw new Error("API connection failed: " + searchResp.status + " " + errTxt);
+      }
       const searchData = await searchResp.json();
+      console.log("[RecipeSearch] complexSearch response data:", searchData);
+
       if (!searchData.results || searchData.results.length === 0) {
         setRecipes([]);
         setLoading(false);
@@ -135,11 +151,24 @@ function App() {
       const recipesData = await Promise.all(
         searchData.results.map(async (basicRecipe) => {
           try {
-            const infoResp = await fetch(
-              `https://api.spoonacular.com/recipes/${basicRecipe.id}/information?includeNutrition=true&apiKey=${apiKey}`
+            const infoUrl = `https://api.spoonacular.com/recipes/${basicRecipe.id}/information?includeNutrition=true&apiKey=${apiKey}`;
+            console.log("[RecipeSearch] Outbound: recipe/information URL", infoUrl);
+
+            const infoResp = await fetch(infoUrl);
+            console.log(
+              `[RecipeSearch] /information resp for recipe ${basicRecipe.id} status:`,
+              infoResp.status, "ok:", infoResp.ok
             );
-            if (!infoResp.ok) throw new Error("Missing info");
+
+            if (!infoResp.ok) {
+              let infoErr = "";
+              try { infoErr = await infoResp.text(); } catch {}
+              console.error("[RecipeSearch] Info load failed", infoResp.status, infoErr);
+              throw new Error("Missing info for recipe " + basicRecipe.id + ": " + infoResp.status + " " + infoErr);
+            }
+
             const info = await infoResp.json();
+            console.log(`[RecipeSearch] Recipe info (${basicRecipe.id}):`, info);
 
             // --- Extract stepwise instructions ---
             let steps = [];
@@ -210,6 +239,7 @@ function App() {
             };
           } catch (innerErr) {
             // Gracefully show fallback for this recipe if fetch failed
+            console.error("[RecipeSearch] Error loading recipe details for id", basicRecipe.id, innerErr);
             return {
               id: basicRecipe.id,
               name: basicRecipe.title || "Recipe unavailable",
@@ -219,16 +249,30 @@ function App() {
               steps: ["Instructions not available."],
               nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
               tags: [],
-              error: "Details could not be loaded."
+              error: "Details could not be loaded. " + (innerErr && innerErr.message ? innerErr.message : "")
             };
           }
         })
       );
+      console.log("[RecipeSearch] Final recipesData:", recipesData);
       setRecipes(recipesData);
     } catch (e) {
       setRecipes([]);
       // eslint-disable-next-line
-      alert("Failed to fetch recipes. The Spoonacular API may have reached its quota or key is invalid.");
+      console.error("[RecipeSearch] ERROR in handleFindRecipes:", e);
+      // Instead of just alert, also show on page for debugging (user and dev)
+      setRecipes([{
+        id: "fail",
+        name: "Recipe Fetch failed!",
+        image: DUMMY_IMG,
+        ingredients: [],
+        steps: [],
+        nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+        tags: [],
+        error: "Failed to fetch recipes. " + (e?.message || "Unknown error. The Spoonacular API may have reached its quota or key is invalid. Please check developer console for full details.")
+      }]);
+      // Also alert user plainly for UI experience
+      alert("Failed to fetch recipes. " + (e?.message ? e.message : "The Spoonacular API may have reached its quota or key is invalid."));
     } finally {
       setLoading(false);
     }
