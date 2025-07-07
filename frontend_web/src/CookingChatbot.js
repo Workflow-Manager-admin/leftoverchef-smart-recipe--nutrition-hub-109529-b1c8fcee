@@ -42,17 +42,32 @@ function CookingChatbot({ apiKey }) {
 
     try {
       // Prepare chat history in Cohere's expected format with correct role capitalization
+      // Map all possible role strings to Cohere API's required format
       const roleMap = {
         "user": "User",
+        "User": "User",
         "assistant": "Chatbot",
+        "Assistant": "Chatbot",
+        "chatbot": "Chatbot",
+        "Chatbot": "Chatbot",
         "system": "System",
-        "tool": "Tool"
+        "System": "System",
+        "tool": "Tool",
+        "Tool": "Tool"
       };
       const msgs = messages
         .concat({ role: "user", text: userMsg })
         .slice(-10)
         .map(m => ({
-          role: roleMap[m.role] || m.role,
+          // Ensures only allowed Cohere role values are sent
+          role: roleMap[m.role] || (
+            // Fallback: treat lowercased or unrecognized user as User, assistant as Chatbot
+            m.role?.toLowerCase() === "assistant" ? "Chatbot" :
+            m.role?.toLowerCase() === "user" ? "User" :
+            m.role?.toLowerCase() === "system" ? "System" :
+            m.role?.toLowerCase() === "tool" ? "Tool" :
+            "User" // default fallback
+          ),
           message: m.text
         }));
 
