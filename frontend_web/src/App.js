@@ -96,14 +96,21 @@ function App() {
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Prepare ingredient list for query
-    const includedIngredients = ingredientList
-      .filter((item) => item.selected)
+    // Prepare ingredient list for query; LOG raw and mapped ingredient data
+    console.log("[DEBUG] ingredientList raw state:", ingredientList);
+    const includedIngredientsArr = ingredientList.filter((item) => item.selected);
+    console.log("[DEBUG] Filtered selected ingredientList array:", includedIngredientsArr);
+
+    const includedIngredients = includedIngredientsArr
       .map((item) => item.name)
       .join(",");
 
-    // --- LOGGING/DEBUG --- Inspect outgoing ingredient list
-    console.log("[RecipeSearch] Included ingredients for search:", includedIngredients, ingredientList);
+    // --- LOGGING/DEBUG --- Outgoing ingredient search params and all detail
+    console.log(
+      "[RecipeSearch] IncludedIngredients for search STRING:",
+      includedIngredients
+    );
+    console.log("[RecipeSearch] Full outgoing ingredientList array for API:", JSON.stringify(includedIngredientsArr, null, 2));
 
     if (!includedIngredients) {
       setLoading(false);
@@ -125,6 +132,11 @@ function App() {
 
       // Log status and headers
       console.log("[RecipeSearch] complexSearch response status:", searchResp.status, "ok:", searchResp.ok);
+      try {
+        for (const [k, v] of searchResp.headers.entries()) {
+          console.log(`[RecipeSearch] searchResp header: ${k}:`, v);
+        }
+      } catch (_e) {}
 
       if (!searchResp.ok) {
         // Try to read body for error details
@@ -133,8 +145,26 @@ function App() {
         console.error("[RecipeSearch] API connection failed: ", searchResp.status, errTxt);
         throw new Error("API connection failed: " + searchResp.status + " " + errTxt);
       }
-      const searchData = await searchResp.json();
-      console.log("[RecipeSearch] complexSearch response data:", searchData);
+      let searchData;
+      try {
+        searchData = await searchResp.json();
+      } catch (jsonErr) {
+        console.error("[RecipeSearch] ERROR: .json() failed parsing for complexSearch resp!", jsonErr);
+        setRecipes([{
+          id: "fail-json",
+          name: "API JSON error",
+          image: DUMMY_IMG,
+          ingredients: [],
+          steps: [],
+          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+          tags: [],
+          error: "API response could not be parsed as JSON. Try again later or check your ingredients.",
+        }]);
+        setLoading(false);
+        alert("API returned unreadable response (JSON). Try again later or notify developer.");
+        return;
+      }
+      console.log("[RecipeSearch] complexSearch response data (JSON):", searchData);
 
       if (!searchData.results || searchData.results.length === 0) {
         setRecipes([]);
@@ -159,6 +189,11 @@ function App() {
               `[RecipeSearch] /information resp for recipe ${basicRecipe.id} status:`,
               infoResp.status, "ok:", infoResp.ok
             );
+            try {
+              for (const [k, v] of infoResp.headers.entries()) {
+                console.log(`[RecipeSearch] infoResp (${basicRecipe.id}) header: ${k}:`, v);
+              }
+            } catch (_e) {}
 
             if (!infoResp.ok) {
               let infoErr = "";
@@ -167,7 +202,23 @@ function App() {
               throw new Error("Missing info for recipe " + basicRecipe.id + ": " + infoResp.status + " " + infoErr);
             }
 
-            const info = await infoResp.json();
+            let info;
+            try {
+              info = await infoResp.json();
+            } catch (jsonErr) {
+              console.error(`[RecipeSearch] ERROR: .json() failed for recipe id=${basicRecipe.id}:`, jsonErr);
+              return {
+                id: basicRecipe.id,
+                name: "Recipe unavailable (JSON error)",
+                image: basicRecipe.image,
+                prep_time: "--",
+                ingredients: ["Ingredients not available."],
+                steps: ["Instructions not available."],
+                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+                tags: [],
+                error: "Could not parse recipe detail response for this recipe. Try another or retry.",
+              };
+            }
             console.log(`[RecipeSearch] Recipe info (${basicRecipe.id}):`, info);
 
             // --- Extract stepwise instructions ---
@@ -181,13 +232,12 @@ function App() {
             if (steps.length === 0) steps = ["Stepwise instructions not available for this recipe."];
 
             // --- Extract nutrition ---
-            // Find values (kcal, grams) and label accordingly
             let nutrition = { calories: null, carbs: null, fats: null, protein: null };
             if (info.nutrition && Array.isArray(info.nutrition.nutrients)) {
               for (const n of info.nutrition.nutrients) {
                 const lname = n.name.toLowerCase();
-                if (lname === "calories") nutrition.calories = Math.round(n.amount); // kcal
-                else if (lname === "carbohydrates") nutrition.carbs = Math.round(n.amount); // g
+                if (lname === "calories") nutrition.calories = Math.round(n.amount);
+                else if (lname === "carbohydrates") nutrition.carbs = Math.round(n.amount);
                 else if (lname === "fat" || lname === "fats") nutrition.fats = Math.round(n.amount);
                 else if (lname === "protein") nutrition.protein = Math.round(n.amount);
               }
@@ -254,13 +304,36 @@ function App() {
           }
         })
       );
-      console.log("[RecipeSearch] Final recipesData:", recipesData);
-      setRecipes(recipesData);
+      console.log("[RecipeSearch] Final recipesData after mapping/Promise.all:", recipesData);
+
+      if (!Array.isArray(recipesData)) {
+        setRecipes([]);
+        alert("Internal error: result from recipe server not an array. See console for details.");
+        return;
+      }
+      // Defensive: filter out any undefined/null recipe results (shouldn't happen)
+      const cleanRecipes = recipesData.filter((r) => r && r.id && r.name);
+      if (recipesData.length !== cleanRecipes.length) {
+        console.warn(
+          `[RecipeSearch] Cleaned ${recipesData.length - cleanRecipes.length} undefined/null results from recipesData`,
+          recipesData
+        );
+      }
+      setRecipes(cleanRecipes.length ? cleanRecipes : [{
+        id: "no-valid",
+        name: "No Valid Recipes Found",
+        image: DUMMY_IMG,
+        ingredients: [],
+        steps: [],
+        nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+        tags: [],
+        error: "No complete or valid recipes could be parsed for this ingredient selection.",
+      }]);
     } catch (e) {
       setRecipes([]);
       // eslint-disable-next-line
-      console.error("[RecipeSearch] ERROR in handleFindRecipes:", e);
-      // Instead of just alert, also show on page for debugging (user and dev)
+      console.error("[RecipeSearch] ERROR in handleFindRecipes (main try/catch):", e);
+      // Show on page (user and developer)
       setRecipes([{
         id: "fail",
         name: "Recipe Fetch failed!",
@@ -269,12 +342,20 @@ function App() {
         steps: [],
         nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
         tags: [],
-        error: "Failed to fetch recipes. " + (e?.message || "Unknown error. The Spoonacular API may have reached its quota or key is invalid. Please check developer console for full details.")
+        error:
+          "Failed to fetch recipes. " +
+          (e?.message || "Unknown error. The Spoonacular API may have reached its quota or the key is invalid. See console for full details."),
       }]);
-      // Also alert user plainly for UI experience
-      alert("Failed to fetch recipes. " + (e?.message ? e.message : "The Spoonacular API may have reached its quota or key is invalid."));
+      alert(
+        "Failed to fetch recipes. " +
+        (e?.message ? e.message : "The Spoonacular API may have reached its quota or key is invalid.")
+      );
     } finally {
       setLoading(false);
+      // Always log state after attempt
+      setTimeout(() => {
+        console.log("[RecipeSearch] Post-fetch: Final recipes state in memory:", recipes);
+      }, 500);
     }
   };
 
@@ -447,9 +528,53 @@ function IngredientList({ ingredients, onToggle, onQuantityChanged, onRemove }) 
   );
 }
 
-// RecipeList: Display recipe cards
+/*
+  RecipeList: Display recipe cards, handling error states visually.
+  - If every recipe has an error (e.g. API fail), show the error content with distinct styling.
+  - Cleanly handles user/developer feedback for all fetch/UI mapping problems.
+*/
 function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
   if (!recipes.length) return null;
+
+  // If every recipe has .error, show special error display
+  const allAreErrors =
+    recipes.length > 0 && recipes.every((r) => r.error && typeof r.error === "string");
+  if (allAreErrors) {
+    return (
+      <div className="recipe-list error-state">
+        {recipes.map((r) => (
+          <div className="recipe-card" key={r.id} style={{ border: "2.5px solid #ea4335" }}>
+            <img
+              src={r.image || DUMMY_IMG}
+              className="recipe-thumb"
+              alt={r.name}
+              style={{ opacity: 0.55, pointerEvents: "none" }}
+            />
+            <div className="recipe-summary">
+              <div
+                className="recipe-card-title"
+                style={{ color: "#ea4335", fontWeight: 900, marginBottom: "0.45em" }}
+              >
+                {r.name}
+              </div>
+              {r.error ? (
+                <div style={{ color: "#bb2124", fontWeight: 700, margin: "0.7em 0" }}>
+                  {r.error}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <div className="muted" style={{ margin: "2.5em 0 1em", fontSize: "1.15em" }}>
+          <span>
+            No valid recipes could be loaded from the server. <br />
+            Please check your ingredients, or try again shortly.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="recipe-list">
       {recipes.map((r) => (
