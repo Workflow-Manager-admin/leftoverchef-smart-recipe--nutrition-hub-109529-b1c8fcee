@@ -276,25 +276,44 @@
   z-index: 22;
   pointer-events: auto;
 }
+
+/* The heart icon floats above overlay and remains click-accessible in all states */
+.fav-heart-btn {
+  position: absolute;
+  right: 13px;
+  top: 16px;
+  z-index: 51; /* Float above overlay */
+  background: none;
+  border: none;
+  padding: 0.21em 0.18em;
+  border-radius: 2em;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 0.18s, background 0.17s, transform 0.11s;
+  box-shadow: 0 0 0 #0000;
+  min-width: 40px;
+  min-height: 40px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.96;
+  filter: brightness(1.10);
+  /* KEY: Always clickable even with overlay present */
+  pointer-events: auto !important;
+}
+
+/* Hide overlay pointer events over heart area, but allow events inside overlay elsewhere */
+.recipe-hover-overlay {
+  /* By default overlay receives pointer events, but above z-index and pointer-events:auto on heart keep heart clickable. */
+}
 .recipe-card-hoverable:hover .recipe-hover-overlay,
 .recipe-card-hoverable:focus-visible .recipe-hover-overlay,
 .recipe-card-hoverable:active .recipe-hover-overlay {
   pointer-events: auto;
 }
 
-.recipe-hover-overlay {
-  /* Make underlying heart icon still catch events by disabling pointer events on part of overlay around that region */
-  /* But: We'll leave pointer-events: auto so links/buttons in overlay still work, see next tweak */
-}
-.fav-heart-btn {
-  /* Increase click area, reduce hover conflicts */
-  pointer-events: auto !important;
-}
-/* Prevent overlay from blocking .fav-heart-btn */
-.recipe-hover-overlay {
-  /* ensure overlay does not block */
-}
-
+/* Mobile: ensure overlay and heart both accessible by tap/focus */
 @media (hover: none) and (pointer: coarse) {
   .recipe-card-hoverable:focus .recipe-hover-overlay {
     display: block;

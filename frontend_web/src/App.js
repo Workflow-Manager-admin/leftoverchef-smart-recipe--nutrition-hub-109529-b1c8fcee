@@ -685,7 +685,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             alt={r.name}
             onClick={() => onOpen(r)}
           />
-          {/* HOVER OVERLAY (ingredients + instructions) (lower z-index, so heart floats above) */}
+          {/* HOVER OVERLAY (ingredients + instructions) */}
           <div className="recipe-hover-overlay" role="tooltip">
             <div className="recipe-hover-title">{r.name}</div>
             <div className="recipe-hover-section">
@@ -712,7 +712,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
               }
             </div>
           </div>
-          {/* Visually distinct heart icon at side for adding/removing favorite -- moved lower for stacking context */}
+          {/* The heart is now rendered after the overlay so its stacking order stays above overlay */}
           <button
             className={
               "fav-heart-btn" +
@@ -722,23 +722,19 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             aria-label={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
             onClick={e => {
               e.stopPropagation();
-              // Add animation trigger to recipe object
               if (!r._favAnimating) {
-                // Set animating flag (causes re-render)
                 r._favAnimating = true;
-                onFav({ ...r }); // ensure optimistic toggle
+                onFav({ ...r }); // optimistic UI
                 setTimeout(() => {
                   r._favAnimating = false;
-                  onFav({ ...r }); // Trigger another re-render for cleanup if needed.
+                  onFav({ ...r });
                 }, 850);
               }
             }}
             title={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
             tabIndex={0}
             type="button"
-            style={{ zIndex: 50, pointerEvents: "auto" }}
           >
-            {/* SVG heart for clearer, modern look */}
             <svg
               width="28"
               height="28"
