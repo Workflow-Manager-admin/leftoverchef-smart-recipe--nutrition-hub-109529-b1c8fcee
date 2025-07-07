@@ -685,6 +685,52 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             alt={r.name}
             onClick={() => onOpen(r)}
           />
+          {/* Visually distinct heart icon at side for adding/removing favorite */}
+          <button
+            className={
+              "fav-heart-btn" +
+              (isFav(r.id) ? " fav-heart-btn-selected" : "") +
+              (r._favAnimating ? " fav-heart-animate" : "")
+            }
+            aria-label={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
+            onClick={e => {
+              e.stopPropagation();
+              // Add animation trigger to recipe object
+              if (!r._favAnimating) {
+                // Set animating flag (causes re-render)
+                r._favAnimating = true;
+                onFav({ ...r }); // ensure optimistic toggle
+                setTimeout(() => {
+                  r._favAnimating = false;
+                  onFav({ ...r }); // Trigger another re-render for cleanup if needed.
+                }, 850);
+              }
+            }}
+            title={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
+            tabIndex={0}
+            type="button"
+          >
+            {/* SVG heart for clearer, modern look */}
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 28 28"
+              className="fav-heart-svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 25.2s-9-6.36-9-12.11C5 7.28 7.86 5 10.68 5a5.65 5.65 0 013.32 1.55A5.65 5.65 0 0117.32 5C20.14 5 23 7.28 23 13.09c0 5.75-9 12.11-9 12.11z"
+                fill={isFav(r.id) ? "#ea4335" : "none"}
+                stroke="#ea4335"
+                strokeWidth="1.7"
+                style={{
+                  filter: isFav(r.id)
+                    ? "drop-shadow(0 2px 8px #ea433539)"
+                    : "drop-shadow(0 1px 4px #ea433535)"
+                }}
+              />
+            </svg>
+          </button>
           {/* HOVER OVERLAY (ingredients + instructions) */}
           <div className="recipe-hover-overlay" role="tooltip">
             <div className="recipe-hover-title">{r.name}</div>
@@ -731,14 +777,6 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
                 {r.nutritionixError}
               </div>
             )}
-            <button
-              className={isFav(r.id) ? "fav-btn selected" : "fav-btn"}
-              aria-label={isFav(r.id) ? "Unfavorite" : "Favorite"}
-              onClick={() => onFav(r)}
-              title={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
-            >
-              {isFav(r.id) ? "★" : "☆"}
-            </button>
           </div>
         </div>
       ))}
