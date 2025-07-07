@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 import "./RecipeStyles.css";
+import CookingChatbot from "./CookingChatbot";
 import logo from "./logo.svg";
 
 // --- Color constants from requirements
@@ -90,6 +91,8 @@ function ApiDebugPanel() {
         </pre>
         {/* For TheMealDB, no API key/quota errors expected */}
       </div>
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -624,6 +627,8 @@ function App() {
           </a>
         </span>
       </footer>
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -790,6 +795,8 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
           </div>
         </div>
       ))}
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -866,6 +873,8 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
           {isFav(recipe.id) ? "★ Remove from favorites" : "☆ Add to favorites"}
         </button>
       </div>
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -921,6 +930,8 @@ function SmartTags({ tags }) {
           </span>
         );
       })}
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -1026,6 +1037,8 @@ function NutritionBars({ nutrition, showLabels }) {
           </div>
         );
       })}
+    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
