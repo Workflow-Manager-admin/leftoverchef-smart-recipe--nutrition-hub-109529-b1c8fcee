@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import "./RecipeStyles.css";
 import CookingChatbot from "./CookingChatbot";
-import logo from "./logo.svg";
+import logo from "./logo_cookchef.svg"; // cooking-themed logo
 
 // --- Color constants from requirements
 const COLORS = {
@@ -69,7 +69,7 @@ function ApiDebugPanel() {
       overflowX: "auto",
       boxShadow: "0 1.5px 7px #8881"
     }}>
-      <div style={{ fontWeight: 800, color: "#4056a1", fontSize: "1.06em", marginBottom: 2  }}>
+      <div style={{ fontWeight: 800, color: "#4056a1", fontSize: "1.06em", marginBottom: 2 }}>
         Debug/Network (API Log)
       </div>
       <div>
@@ -89,17 +89,16 @@ function ApiDebugPanel() {
         <pre style={{ margin: 0, background: "#feeee8", borderRadius: 7, fontSize: 13, padding: 8, overflowX: "auto", color: "#ea4335" }}>
           {error ? String(error) : "--"}
         </pre>
-        {/* For TheMealDB, no API key/quota errors expected */}
       </div>
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
 
 // PUBLIC_INTERFACE
 function App() {
-  const [theme] = useState("light"); // Future: support theme switch if needed
+  const [theme] = useState("light");
   const [ingredientInput, setIngredientInput] = useState("");
   const [ingredientList, setIngredientList] = useState([]); // [{name, quantity, selected}]
   const [recipes, setRecipes] = useState([]);
@@ -107,11 +106,10 @@ function App() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // For API/network logs and errors (debug flows UI)
+  // For API/network logs and errors
   const [apiDebug, setApiDebug] = useState({ request: null, response: null, error: null });
 
-  // PUBLIC_INTERFACE
-  // Handles addition of ingredients from input
+  // PUBLIC_INTERFACE: Handles addition of ingredients from input
   const handleAddIngredient = () => {
     const value = ingredientInput.trim();
     if (!value) return;
@@ -122,8 +120,7 @@ function App() {
     setIngredientInput("");
   };
 
-  // PUBLIC_INTERFACE
-  // Toggle ingredient selection (for inclusion in search)
+  // PUBLIC_INTERFACE: Toggle ingredient selection
   const handleIngredientToggle = (idx) => {
     setIngredientList((prev) =>
       prev.map((item, i) =>
@@ -132,8 +129,7 @@ function App() {
     );
   };
 
-  // PUBLIC_INTERFACE
-  // Update quantity
+  // PUBLIC_INTERFACE: Update quantity
   const handleQuantityChange = (idx, change) => {
     setIngredientList((prev) =>
       prev.map((item, i) =>
@@ -144,27 +140,22 @@ function App() {
     );
   };
 
-  // PUBLIC_INTERFACE
-  // Remove an ingredient
+  // PUBLIC_INTERFACE: Remove an ingredient
   const removeIngredient = (idx) => {
     setIngredientList((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // PUBLIC_INTERFACE
-  // PUBLIC_INTERFACE
-  // Handles API call to get live recipe suggestions from TheMealDB API (by ingredients)
+  // PUBLIC_INTERFACE: Handles API call to get live recipe suggestions
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Collect selected ingredients
     const includedIngredientsArr = ingredientList.filter((item) => item.selected);
     const includedIngredients = includedIngredientsArr
       .map((item) => item.name)
       .join(",");
 
-    // API debug state: initialize/clear before run
     setApiDebug({ request: null, response: null, error: null });
 
     if (!includedIngredients) {
@@ -177,9 +168,6 @@ function App() {
       alert("Please select at least one ingredient before searching for recipes.");
       return;
     }
-
-    // TheMealDB: Lookup by ingredient only supports one at a time, we'll OR all
-    // for demo, get matches for first ingredient only
     const firstIngredient = includedIngredientsArr[0].name;
 
     const apiListUrl = `https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(firstIngredient)}`;
@@ -217,10 +205,10 @@ function App() {
         return;
       }
 
-      // Only show 6 for UI (as formerly done)
+      // Only show 6 for UI
       const topMeals = respJson.meals.slice(0, 6);
 
-      // 2. Fetch detailed info (instructions etc) for each
+      // 2. Fetch detailed info for each
       const details = await Promise.all(
         topMeals.map(async (item, mealIndex) => {
           try {
@@ -241,22 +229,20 @@ function App() {
             }
             if (steps.length === 0) steps = ["Stepwise instructions not available."];
 
-            // Ingredients - TheMealDB provides up to 20 manually
+            // Ingredients
             let ingredients = [];
             let ingredientPairs = [];
             for (let idx = 1; idx <= 20; idx++) {
               const nm = meal[`strIngredient${idx}`];
               const amt = meal[`strMeasure${idx}`];
               if (nm && nm.trim()) {
-                // For display
                 ingredients.push(
                   `${nm.trim()}${amt && amt.trim() ? ` (${amt.trim()})` : ""}`
                 );
-                // For Nutritionix: try compact and user-like, e.g. "2 cups flour"
                 if (amt && amt.trim()) {
-                  ingredientPairs.push(`${amt.trim()} ${nm.trim()}`); // "2 cups flour"
+                  ingredientPairs.push(`${amt.trim()} ${nm.trim()}`);
                 } else {
-                  ingredientPairs.push(nm.trim()); // "flour"
+                  ingredientPairs.push(nm.trim());
                 }
               }
             }
@@ -265,7 +251,7 @@ function App() {
             if (ingredientPairs.length === 0)
               ingredientPairs = [];
 
-            // Smart tags (basic heuristics)
+            // Smart tags
             const tags = [];
             if ((meal.strTags || "").toLowerCase().includes("vegan")) tags.push("Vegan");
             if ((meal.strCategory || "").toLowerCase().includes("vegan")) tags.push("Vegan");
@@ -275,33 +261,16 @@ function App() {
             if ((meal.strMeal || "").toLowerCase().match(/protein/)) tags.push("High Protein");
             // no reliable way to estimate carbs/fats without nutrition
 
-            // -------- Nutritionix integration -----------
+            // Nutritionix integration
             let nutrition = null;
             let nutritionixError = null;
-
-            // --- Nutritionix integration via /v2/natural/nutrients ---
-            // PUBLIC_INTERFACE: Call Nutritionix for nutrition for recipe ingredients
             if (ingredientPairs.length > 0) {
               const query = ingredientPairs.join(", ");
-
-              /* Nutritionix API config. CREDENTIALS injected via .env (see frontend_web/.env):
-                REACT_APP_NUTRITIONIX_APP_ID
-                REACT_APP_NUTRITIONIX_API_KEY
-              */
               const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
               const NUTRITIONIX_API_KEY =
                 process.env.REACT_APP_NUTRITIONIX_API_KEY || undefined;
               const NUTRITIONIX_APP_ID =
                 process.env.REACT_APP_NUTRITIONIX_APP_ID || undefined;
-
-              // NEW: Fallback to hardcoded demo values ONLY if env is missing (for test/dev)
-              // REMOVE fallback in production environments
-              /*
-                if (!NUTRITIONIX_API_KEY || !NUTRITIONIX_APP_ID) {
-                  NUTRITIONIX_APP_ID = "dda10f96";
-                  NUTRITIONIX_API_KEY = "1f64bf57416ee00fa257098f33be2843";
-                }
-               */
 
               if (!NUTRITIONIX_API_KEY || !NUTRITIONIX_APP_ID) {
                 nutritionixError =
@@ -318,7 +287,6 @@ function App() {
                     body: JSON.stringify({ query }),
                   });
 
-                  // Nutritionix errors/rate limits etc
                   if (resp.status === 429) {
                     nutritionixError =
                       "Rate limited by Nutritionix. Please wait and try again.";
@@ -360,18 +328,12 @@ function App() {
             }
             // --- End Nutritionix integration ---
 
-            // Helper to map/parse a sensible prep time, as TheMealDB lacks explicit prep time fields.
-            // Prefer strTags (look for duration info), fallback to strArea as a fake, else null.
             function getPrepTimeString(mealObj) {
-              // TheMealDB does NOT have a prep-time field.
-              // Sometimes people put time in strTags or strInstructions, but it's not structured.
-              // We'll check (as a bonus) strTags for minute/hour pattern
               let tagRaw = mealObj.strTags || "";
               let tagTimeMatch = tagRaw.match(/(\d+)\s*(min|minute|minutes|hr|hour|hours)/i);
               if (tagTimeMatch && tagTimeMatch[1]) {
                 return formatPrepTime(Number(tagTimeMatch[1]), (tagTimeMatch[2]||"min").toLowerCase());
               }
-              // As a complete fallback, check instructions for explicit timings e.g. "Bake for 40 minutes"
               if (mealObj.strInstructions) {
                 let instr = mealObj.strInstructions;
                 let timeMatch = instr.match(/(\d+)\s*(min|minute|minutes|hr|hour|hours)/i);
@@ -379,28 +341,21 @@ function App() {
                   return formatPrepTime(Number(timeMatch[1]), (timeMatch[2]||"min").toLowerCase());
                 }
               }
-              // Fallback: "--" for not available
               return null;
             }
             function formatPrepTime(val, unit) {
-              // Standardize user-friendly display
               if (!val || !unit) return null;
               if (unit.startsWith("hr")) {
                 if (val === 1) return "1 hour";
                 return `${val} hours`;
               }
-              // Assume minutes for "min" and variants
               if (unit.startsWith("min")) {
                 return `${val} min`;
               }
-              // Fallback: just value and unit
               return `${val} ${unit}`;
             }
-
-            // Derive the prep time, with fallback placeholder
             let prepTime = getPrepTimeString(meal) || "Prep time not available";
 
-            // Return full recipe (including per-recipe nutrition and error)
             return {
               id: meal.idMeal,
               name: meal.strMeal,
@@ -408,9 +363,9 @@ function App() {
               prep_time: prepTime,
               ingredients,
               steps,
-              nutrition, // calories, protein, fat, carbs (for UI)
+              nutrition,
               tags,
-              nutritionixError, // error for user/developer in UI
+              nutritionixError,
             };
           } catch (err) {
             return {
@@ -478,8 +433,7 @@ function App() {
     }
   };
 
-  // PUBLIC_INTERFACE
-  // Toggle favorite
+  // PUBLIC_INTERFACE: Toggle favorite
   const handleFavorite = (recipe) => {
     setFavorites((prev) => {
       const exist = prev.find((r) => r.id === recipe.id);
@@ -489,8 +443,7 @@ function App() {
     });
   };
 
-  // PUBLIC_INTERFACE
-  // Check for favorite
+  // PUBLIC_INTERFACE: Check for favorite
   const isFavorite = (id) => favorites.some((r) => r.id === id);
 
   // Load favorites from localStorage on mount
@@ -506,13 +459,22 @@ function App() {
     localStorage.setItem("favorites", JSON.stringify(favorites));
   }, [favorites]);
 
+  // --- UI Rendering ---
   return (
     <div className="main-app">
       {/* HEADER */}
-      <header className="header">
-        <img src={logo} alt="LeftoverChef logo" className="header-logo" />
+      <header className="App-header header">
+        {/* Animated logo with floating wiggle */}
+        <div className="logo-animated-wrapper">
+          <img src={logo} alt="Chef's hat pan logo" className="header-logo logo-cooking-animate" />
+          {/* Animated floating ingredient icons */}
+          <span className="logo-floating-sprite tomato" aria-hidden="true"></span>
+          <span className="logo-floating-sprite egg" aria-hidden="true"></span>
+          <span className="logo-floating-sprite carrot" aria-hidden="true"></span>
+          <span className="logo-floating-sprite herb" aria-hidden="true"></span>
+        </div>
         <nav className="nav">
-          <span className="nav-title">LeftoverChef – Smart Recipe & Nutrition Hub</span>
+          <span className="nav-title animate-gradient-title">LeftoverChef – Smart Recipe & Nutrition Hub</span>
         </nav>
       </header>
 
@@ -529,7 +491,6 @@ function App() {
             }
           />
         </aside>
-
         {/* Main Content Area */}
         <main className="content">
           <section>
@@ -544,8 +505,8 @@ function App() {
                   if (e.key === "Enter") handleAddIngredient();
                 }}
               />
-              <button className="primary-btn" onClick={handleAddIngredient}>
-                Add
+              <button className="primary-btn wiggle-animate" onClick={handleAddIngredient}>
+                <span className="btn-ingredient-icon">🍅</span> Add
               </button>
             </div>
             <IngredientList
@@ -555,7 +516,6 @@ function App() {
               onRemove={removeIngredient}
             />
           </section>
-
           <section className="find-recipes-section">
             {/* User feedback for error state (if last run produced one) */}
             {!loading && recipes.length > 0 && recipes.every(r => r.error) && (
@@ -575,17 +535,22 @@ function App() {
               </div>
             )}
             <button
-              className="accent-btn"
+              className="accent-btn shake-animate"
               onClick={handleFindRecipes}
               disabled={loading || ingredientList.length === 0}
-              style={{ minWidth: "180px" }}
+              style={{ minWidth: "180px", position: "relative" }}
             >
-              {loading ? "Finding Recipes..." : "Find Recipes"}
+              <span className="btn-ingredient-icon">🥕</span> {loading ? "Finding Recipes..." : "Find Recipes"}
+              <span className="btn-icon-pan" role="img" aria-label="pan">🍳</span>
             </button>
           </section>
-
           <section>
-            <h2>Recipe Suggestions</h2>
+            <h2 className="rainbow-heading">Recipe Suggestions</h2>
+            <div className="animated-floating-icons-area">
+              <span className="sprite onion" aria-hidden="true"></span>
+              <span className="sprite broccoli" aria-hidden="true"></span>
+              <span className="sprite lemon" aria-hidden="true"></span>
+            </div>
             {loading && (
               <div className="loading" aria-live="polite">
                 Loading recipes from TheMealDB...
@@ -596,7 +561,6 @@ function App() {
                 No recipes to show. Try adding ingredients.
               </div>
             )}
-            {/* Aggressive error/state display: if every recipe card is error, RecipeList will show user/developer error */}
             <RecipeList
               recipes={recipes}
               favorites={favorites}
@@ -605,7 +569,6 @@ function App() {
               isFav={isFavorite}
             />
           </section>
-          {/* --- DEEP API DEBUG PANEL: show last raw Spoonacular API response and errors --- */}
           <ApiDebugPanel />
         </main>
 
@@ -617,7 +580,6 @@ function App() {
           isFav={isFavorite}
         />
       </div>
-
       {/* FOOTER */}
       <footer className="footer">
         <span>
@@ -627,13 +589,11 @@ function App() {
           </a>
         </span>
       </footer>
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
-
-// --- COMPONENTS ---
 
 // IngredientList: Inputted ingredients with checkbox & quantity
 function IngredientList({ ingredients, onToggle, onQuantityChanged, onRemove }) {
@@ -675,15 +635,9 @@ function IngredientList({ ingredients, onToggle, onQuantityChanged, onRemove }) 
   );
 }
 
-/*
-  RecipeList: Display recipe cards, handling error states visually.
-  - If every recipe has an error (e.g. API fail), show the error content with distinct styling.
-  - Cleanly handles user/developer feedback for all fetch/UI mapping problems.
-*/
+// RecipeList: Display recipe cards, handling error states visually.
 function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
   if (!recipes.length) return null;
-
-  // If every recipe has .error, show special error display
   const allAreErrors =
     recipes.length > 0 && recipes.every((r) => r.error && typeof r.error === "string");
   if (allAreErrors) {
@@ -721,10 +675,6 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
       </div>
     );
   }
-
-  // Hover overlay logic: state for currently hovered card if needed in future extensibility
-  // For now, pure CSS overlay, but could be adopted to React Tooltip or Popover if desired
-
   return (
     <div className="recipe-list">
       {recipes.map((r) => (
@@ -749,7 +699,6 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             </div>
             <div className="recipe-hover-section">
               <strong>Instructions:</strong>
-              {/* Show instructions as a numbered list if length > 1 */}
               {(Array.isArray(r.steps) && r.steps.length > 0 && (r.steps.length > 1 || (r.steps[0] && r.steps[0].trim())))
                 ? (
                   <ol className="hover-steps-list">
@@ -768,9 +717,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
               {r.name}
             </div>
             <SmartTags tags={r.tags} />
-            {/* Removed prep time line */}
             <NutritionBars nutrition={r.nutrition} />
-            {/* Nutritionix error or rate limit info, show in small muted text under bars if available */}
             {r.nutritionixError && (
               <div
                 style={{
@@ -795,18 +742,13 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
           </div>
         </div>
       ))}
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
 
-/*
-  RecipeDetailsModal: Shows selected recipe in detail.
-  - Stepwise instructions (gracefully show message if missing)
-  - Nutrition values always labeled (g/kcal)
-  - Handles missing data gracefully
-*/
+// RecipeDetailsModal: Shows selected recipe in detail.
 function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
   if (!recipe) return null;
   return (
@@ -859,7 +801,6 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
         )}
         <h4>Nutritional Breakdown</h4>
         <NutritionBars nutrition={recipe.nutrition} showLabels />
-        {/* Show nutrition error in detail modal as well, e.g. rate limit, missing, etc */}
         {recipe.nutritionixError && (
           <div className="muted" style={{ color: "#b12c2c", fontStyle: "italic", margin: "0.7em 0" }}>
             {recipe.nutritionixError}
@@ -873,8 +814,8 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
           {isFav(recipe.id) ? "★ Remove from favorites" : "☆ Add to favorites"}
         </button>
       </div>
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
@@ -930,27 +871,19 @@ function SmartTags({ tags }) {
           </span>
         );
       })}
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
 
 /*
   NutritionBars: Enhanced color-coded nutrition bars with clear, explicit labels and values.
-  - Each bar row contains the label (e.g., "Protein (g)", "Carbs (g)", etc.) next to the colored bar,
-    AND the value is displayed in bold beside the bar for clarity.
-  - Calories are shown in kcal, others in grams.
-  - For prominent display: values use bold styling; bars have larger contrast text.
-  - Responsive and WCAG-friendly for color/labelling.
-  Always shown on recipes; showLabels prop can force left labels in modals.
 */
 function NutritionBars({ nutrition, showLabels }) {
-  // If no data, show nothing in summary card (handled by details modal for error)
   if (!nutrition) {
     return null;
   }
-  // nutrition: {calories, carbs, fats, protein}
   const stats = [
     {
       key: "calories",
@@ -986,7 +919,6 @@ function NutritionBars({ nutrition, showLabels }) {
       {stats.map((stat) => {
         const value = nutrition[stat.key] !== undefined ? nutrition[stat.key] : 0;
         const pct = Math.min(100, Math.round((value / stat.max) * 100));
-        // Left label for clarity - always show label, and display legend for color association
         return (
           <div className="nutrition-bar-row enhanced-row" key={stat.key}>
             <span
@@ -1013,14 +945,12 @@ function NutritionBars({ nutrition, showLabels }) {
                 }}
                 aria-label={`${stat.label}: ${value}${stat.key === "calories" ? " kcal" : " g"}`}
               >
-                {/* Value inside bar only for high %; else show outside */}
                 {pct > 35 ? (
                   <span className="nutrition-bar-text enhanced-text">
                     {stat.getDisplay(value)}
                   </span>
                 ) : null}
               </div>
-              {/* Value always at right, not in bar if bar is short */}
               <span
                 className="nutrition-value-outside"
                 style={{
@@ -1037,8 +967,8 @@ function NutritionBars({ nutrition, showLabels }) {
           </div>
         );
       })}
-    {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
-    <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
+      {/* --- Cooking Chatbot floating UI, integrated with Cohere AI --- */}
+      <CookingChatbot apiKey="ACu70U872FXYLWdDkJfsXnvioQlysRg8GnZZIEtC" />
     </div>
   );
 }
