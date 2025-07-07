@@ -275,73 +275,89 @@ function App() {
             // -------- Nutritionix integration -----------
             let nutrition = null;
             let nutritionixError = null;
+
+            // --- Nutritionix integration via /v2/natural/nutrients ---
+            // PUBLIC_INTERFACE: Call Nutritionix for nutrition for recipe ingredients
             if (ingredientPairs.length > 0) {
-              // Compose the input string for Nutritionix
               const query = ingredientPairs.join(", ");
-              try {
-                // Nutritionix API details
-                const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
-                // Fetch credentials from environment for security (now injected through React build)
-                const NUTRITIONIX_API_KEY = process.env.REACT_APP_NUTRITIONIX_API_KEY;
-                const NUTRITIONIX_APP_ID = process.env.REACT_APP_NUTRITIONIX_APP_ID;
 
-                // Nutritionix requires BOTH headers (app-key & app-id)
+              /* Nutritionix API config. CREDENTIALS injected via .env (see frontend_web/.env):
+                REACT_APP_NUTRITIONIX_APP_ID
+                REACT_APP_NUTRITIONIX_API_KEY
+              */
+              const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
+              const NUTRITIONIX_API_KEY =
+                process.env.REACT_APP_NUTRITIONIX_API_KEY || undefined;
+              const NUTRITIONIX_APP_ID =
+                process.env.REACT_APP_NUTRITIONIX_APP_ID || undefined;
+
+              // NEW: Fallback to hardcoded demo values ONLY if env is missing (for test/dev)
+              // REMOVE fallback in production environments
+              /*
                 if (!NUTRITIONIX_API_KEY || !NUTRITIONIX_APP_ID) {
-                  nutritionixError = "Nutritionix credentials are missing: Make sure REACT_APP_NUTRITIONIX_API_KEY and REACT_APP_NUTRITIONIX_APP_ID are set in your .env file.";
+                  NUTRITIONIX_APP_ID = "dda10f96";
+                  NUTRITIONIX_API_KEY = "1f64bf57416ee00fa257098f33be2843";
                 }
+               */
 
-                const resp = await fetch(NUTRITIONIX_ENDPOINT, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "x-app-key": NUTRITIONIX_API_KEY,
-                    "x-app-id": NUTRITIONIX_APP_ID,
-                  },
-                  body: JSON.stringify({
-                    query: query,
-                  }),
-                });
-                // Rate limiting: Nutritionix returns 429, handle gracefully
-                if (resp.status === 429) {
-                  nutritionixError = "Rate limited by Nutritionix. Please wait and try again.";
-                } else if (!resp.ok) {
-                  // Most errors return 4xx
-                  nutritionixError = `Nutritionix error: ${resp.status} ${resp.statusText}`;
-                } else {
-                  const nutriJson = await resp.json();
-                  // Nutritionix returns foods: [..], sum all values
-                  let cal = 0, carbs = 0, pro = 0, fat = 0;
-                  if (nutriJson && nutriJson.foods && Array.isArray(nutriJson.foods)) {
-                    nutriJson.foods.forEach((fd) => {
-                      if (typeof fd.nf_calories === "number") cal += fd.nf_calories;
-                      if (typeof fd.nf_total_carbohydrate === "number") carbs += fd.nf_total_carbohydrate;
-                      if (typeof fd.nf_protein === "number") pro += fd.nf_protein;
-                      if (typeof fd.nf_total_fat === "number") fat += fd.nf_total_fat;
-                    });
-                  }
-                  // Parse out values to reasonable ranges (round to int for calories, 1dp for grams)
-                  // Don't display zeros if every value is 0
-                  const totalNutrients = cal + carbs + pro + fat;
-                  if (totalNutrients > 0) {
-                    nutrition = {
-                      calories: Math.round(cal),
-                      carbs: Math.round(carbs * 10) / 10,
-                      protein: Math.round(pro * 10) / 10,
-                      fats: Math.round(fat * 10) / 10,
-                    };
+              if (!NUTRITIONIX_API_KEY || !NUTRITIONIX_APP_ID) {
+                nutritionixError =
+                  "Nutritionix credentials are missing: Make sure REACT_APP_NUTRITIONIX_APP_ID and REACT_APP_NUTRITIONIX_API_KEY are set in your .env file.";
+              } else {
+                try {
+                  const resp = await fetch(NUTRITIONIX_ENDPOINT, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "x-app-id": NUTRITIONIX_APP_ID,
+                      "x-app-key": NUTRITIONIX_API_KEY,
+                    },
+                    body: JSON.stringify({ query }),
+                  });
+
+                  // Nutritionix errors/rate limits etc
+                  if (resp.status === 429) {
+                    nutritionixError =
+                      "Rate limited by Nutritionix. Please wait and try again.";
+                  } else if (!resp.ok) {
+                    nutritionixError = `Nutritionix error: ${resp.status} ${resp.statusText}`;
                   } else {
-                    nutritionixError = "Nutrition breakdown not available for these inputs.";
+                    const nutriJson = await resp.json();
+                    // Nutritionix returns foods: [..], sum all values
+                    let cal = 0, carbs = 0, pro = 0, fat = 0;
+                    if (nutriJson && nutriJson.foods && Array.isArray(nutriJson.foods)) {
+                      nutriJson.foods.forEach((fd) => {
+                        if (typeof fd.nf_calories === "number") cal += fd.nf_calories;
+                        if (typeof fd.nf_total_carbohydrate === "number") carbs += fd.nf_total_carbohydrate;
+                        if (typeof fd.nf_protein === "number") pro += fd.nf_protein;
+                        if (typeof fd.nf_total_fat === "number") fat += fd.nf_total_fat;
+                      });
+                    }
+                    const totalNutrients = cal + carbs + pro + fat;
+                    if (totalNutrients > 0) {
+                      nutrition = {
+                        calories: Math.round(cal),
+                        carbs: Math.round(carbs * 10) / 10,
+                        protein: Math.round(pro * 10) / 10,
+                        fats: Math.round(fat * 10) / 10,
+                      };
+                    } else {
+                      nutritionixError = "Nutrition breakdown not available for these inputs.";
+                    }
                   }
+                } catch (e) {
+                  nutritionixError =
+                    "Error contacting Nutritionix: " +
+                    (e && e.message ? e.message : String(e));
                 }
-              } catch (e) {
-                // Network or JSON error
-                nutritionixError = "Error contacting Nutritionix: " + (e && e.message ? e.message : String(e));
               }
             } else {
-              nutritionixError = "No recognizable ingredient/measures for nutrition analysis.";
+              nutritionixError =
+                "No recognizable ingredient/measures for nutrition analysis.";
             }
-            // End Nutritionix integration
+            // --- End Nutritionix integration ---
 
+            // Return full recipe (including per-recipe nutrition and error)
             return {
               id: meal.idMeal,
               name: meal.strMeal,
@@ -349,9 +365,9 @@ function App() {
               prep_time: meal.strArea || "--",
               ingredients,
               steps,
-              nutrition, // possibly null
+              nutrition, // calories, protein, fat, carbs (for UI)
               tags,
-              nutritionixError, // for debug
+              nutritionixError, // error for user/developer in UI
             };
           } catch (err) {
             return {
