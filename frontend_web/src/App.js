@@ -346,6 +346,15 @@ function App() {
           "Failed to fetch recipes. " +
           (e?.message || "Unknown error. The Spoonacular API may have reached its quota or the key is invalid. See console for full details."),
       }]);
+      // Special: if error text mentions quota or invalid key, output to log with a fix.
+      if (
+        (e?.message && (e.message.includes("quota") || e.message.includes("key"))) ||
+        /quota|key/i.test(e?.toString?.() || "")
+      ) {
+        console.warn(
+          "[RecipeSearch][UserHelp] Spoonacular API quota may be exceeded or API key is invalid. See https://spoonacular.com/food-api/docs#Errors for more info or request a new key."
+        );
+      }
       alert(
         "Failed to fetch recipes. " +
         (e?.message ? e.message : "The Spoonacular API may have reached its quota or key is invalid.")
@@ -438,6 +447,23 @@ function App() {
           </section>
 
           <section className="find-recipes-section">
+            {/* User feedback for error state (if last run produced one) */}
+            {!loading && recipes.length > 0 && recipes.every(r => r.error) && (
+              <div
+                style={{
+                  color: "#ea4335",
+                  background: "#fff0f0",
+                  border: "1.5px solid #ea4335",
+                  borderRadius: 8,
+                  padding: "0.8em 1.1em",
+                  marginBottom: 12,
+                  fontWeight: 600
+                }}
+                aria-live="assertive"
+              >
+                {recipes[0].error || "Recipe fetch failed. Please check your API quota or try again later."}
+              </div>
+            )}
             <button
               className="accent-btn"
               onClick={handleFindRecipes}
@@ -450,10 +476,17 @@ function App() {
 
           <section>
             <h2>Recipe Suggestions</h2>
-            {loading && <div className="loading">Loading...</div>}
-            {!loading && recipes.length === 0 && (
-              <div className="muted">No recipes to show. Try adding ingredients.</div>
+            {loading && (
+              <div className="loading" aria-live="polite">
+                Loading recipes from Spoonacular...
+              </div>
             )}
+            {!loading && recipes.length === 0 && (
+              <div className="muted" aria-live="polite">
+                No recipes to show. Try adding ingredients.
+              </div>
+            )}
+            {/* Aggressive error/state display: if every recipe card is error, RecipeList will show user/developer error */}
             <RecipeList
               recipes={recipes}
               favorites={favorites}
@@ -547,7 +580,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             <img
               src={r.image || DUMMY_IMG}
               className="recipe-thumb"
-              alt={r.name}
+              alt={(r.name ? `${r.name} error` : "Recipe Error")}
               style={{ opacity: 0.55, pointerEvents: "none" }}
             />
             <div className="recipe-summary">
@@ -565,7 +598,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             </div>
           </div>
         ))}
-        <div className="muted" style={{ margin: "2.5em 0 1em", fontSize: "1.15em" }}>
+        <div className="muted" style={{ margin: "2.5em 0 1em", fontSize: "1.15em" }} aria-live="polite">
           <span>
             No valid recipes could be loaded from the server. <br />
             Please check your ingredients, or try again shortly.
