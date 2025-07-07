@@ -36,13 +36,40 @@ function CookingChatbot({ apiKey }) {
       { role: "user", text: userMsg }
     ]);
     setLoading(true);
+
+    // Debugging/log state
+    let requestLog = null, responseLog = null, errorLog = null;
+
     try {
       // Prepare chat history in Cohere's expected format
       const msgs = messages
         .concat({ role: "user", text: userMsg })
         .slice(-10)
-        .map(m => ({ role: m.role, message: m.text })); // Cohere: role 'user' or 'assistant'
-      // Call Cohere AI
+        .map(m => ({ role: m.role, message: m.text }));
+
+      // Compose request details for debug log
+      requestLog = {
+        url: COHERE_ENDPOINT,
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer (redacted)",
+          "Content-Type": "application/json"
+        },
+        sent_headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: {
+          message: userMsg,
+          stream: false,
+          model: "command-r-plus",
+          chat_history: msgs
+        },
+        timestamp: new Date().toISOString(),
+      };
+      console.log("[Cohere] Chat Request", requestLog);
+
+      // Start API request
       const resp = await fetch(COHERE_ENDPOINT, {
         method: "POST",
         headers: {
@@ -51,12 +78,33 @@ function CookingChatbot({ apiKey }) {
         },
         body: JSON.stringify({
           message: userMsg,
-          // Cohere docs: conversation history, max_tokens, model (defaults ok)
           stream: false,
           model: "command-r-plus",
           chat_history: msgs
         }),
       });
+
+      // Store HTTP info
+      responseLog = {
+        status: resp.status,
+        statusText: resp.statusText,
+        headers: {},
+        rawResponse: null,
+      };
+      for (const [key, value] of resp.headers.entries()) {
+        responseLog.headers[key] = value;
+      }
+      // Try catch for JSON decoding
+      let data = null;
+      try {
+        responseLog.rawResponse = await resp.clone().text(); // Save raw for log
+        data = await resp.json();
+      } catch (jsonErr) {
+        errorLog = `Error decoding Cohere response as JSON: ${jsonErr && jsonErr.message ? jsonErr.message : String(jsonErr)}`;
+        console.error("[Cohere] Bad JSON:", responseLog.rawResponse, jsonErr);
+      }
+
+      // Quota/rate limit error
       if (resp.status === 429) {
         setErrorMsg(
           "You have exceeded the current API usage limit for the chatbot. Please try again later."
@@ -66,11 +114,17 @@ function CookingChatbot({ apiKey }) {
           {
             role: "assistant",
             text:
-              "Sorry, our Cooking Chatbot is temporarily unavailable due to API limits. Please try again soon.",
+              "Sorry, our Cooking Chatbot is temporarily unavailable due to Cohere API rate limits. Please try again soon.",
           },
         ]);
-      } else if (!resp.ok) {
-        setErrorMsg("The chatbot could not reply right now. Please try again.");
+        console.warn("[Cohere] Quota/Rate limited", responseLog);
+      }
+      // Any HTTP error
+      else if (!resp.ok) {
+        setErrorMsg(
+          `The chatbot could not reply at this time. HTTP error: ${resp.status} ${resp.statusText}` +
+            (responseLog.rawResponse ? `\nDetails: ${responseLog.rawResponse}` : "")
+        );
         setMessages((msgs) => [
           ...msgs,
           {
@@ -79,9 +133,27 @@ function CookingChatbot({ apiKey }) {
               "Sorry, I couldn't get a reply from Cohere AI right now. Please try again in a moment.",
           },
         ]);
-      } else {
-        const data = await resp.json();
-        // Show the AI's reply, fallback if not available
+        console.error("[Cohere] HTTP Error", responseLog);
+      }
+      // JSON parse errors (invalid API, format change, etc)
+      else if (!data || (!data.text && !data.reply)) {
+        const advice = "The chatbot could not process a valid answer. Please try again or contact support.";
+        setErrorMsg(
+          "Cohere AI response format was invalid or changed. " +
+            (errorLog ? `Error: ${errorLog}` : "") +
+            (responseLog.rawResponse ? `\nRaw: ${responseLog.rawResponse}` : "")
+        );
+        setMessages((msgs) => [
+          ...msgs,
+          {
+            role: "assistant",
+            text: advice,
+          },
+        ]);
+        console.error("[Cohere] Invalid response JSON", responseLog, data, errorLog);
+      }
+      // Normal success
+      else {
         setMessages((msgs) => [
           ...msgs,
           {
@@ -89,18 +161,21 @@ function CookingChatbot({ apiKey }) {
             text: data.text || (data.reply ?? "Sorry, I couldn't find an answer."),
           },
         ]);
+        responseLog.parsed = data;
       }
     } catch (err) {
+      errorLog = err && err.message ? err.message : String(err);
       setErrorMsg(
-        "A network or internal error occurred connecting to the chatbot API."
+        "A network or internal error occurred connecting to the chatbot API: " + errorLog
       );
       setMessages((msgs) => [
         ...msgs,
         {
           role: "assistant",
-          text: "Sorry, there was an unexpected error. Please check your connection and try again.",
+          text: "Sorry, there was an unexpected error. Please check your connection and try again.\n" + errorLog,
         },
       ]);
+      console.error("[Cohere] Network/Internal Error", errorLog, requestLog, responseLog);
     } finally {
       setLoading(false);
       // scroll to bottom of chat after message delivered
@@ -109,6 +184,13 @@ function CookingChatbot({ apiKey }) {
           chatRef.current.scrollTop = chatRef.current.scrollHeight;
         }
       }, 80);
+
+      // Also log everything in console for deep debugging
+      console.debug("[Cohere] Request Log", requestLog);
+      console.debug("[Cohere] Response Log", responseLog);
+      if (errorLog) {
+        console.error("[Cohere] Error Log", errorLog);
+      }
     }
   }
 
