@@ -90,23 +90,114 @@ function App() {
   };
 
   // PUBLIC_INTERFACE
-  // Handles API call to get recipe suggestions
+  // Handles API call to get live recipe suggestions from Spoonacular API
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Build query for demo, here just mock the API response
+    // Prepare ingredient list for query
+    const includedIngredients = ingredientList
+      .filter((item) => item.selected)
+      .map((item) => item.name)
+      .join(",");
+
+    const apiKey = process.env.REACT_APP_SPOONACULAR_API_KEY;
+
+    // Fetch from Spoonacular API (returning recipes with images and details)
     try {
-      // Simulate REST API call
-      // In real: const response = await fetch('/api/recipes?...')
-      await new Promise((res) => setTimeout(res, 800));
-      const mockRecipes = getMockRecipes(ingredientList);
-      setRecipes(mockRecipes);
+      // Step 1: Search for recipes matching ingredients
+      const searchResp = await fetch(
+        `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
+          includedIngredients
+        )}&number=6&addRecipeInformation=true&instructionsRequired=true&fillIngredients=true&apiKey=${apiKey}`
+      );
+      if (!searchResp.ok) throw new Error("API connection failed");
+      const searchData = await searchResp.json();
+      // Step 2: For each recipe, fetch details including instructions if needed
+      const recipesData = await Promise.all(
+        (searchData.results || []).map(async (recipe) => {
+          // Instructions are included if addRecipeInformation=true, otherwise fetch details:
+          let recipeDetails = recipe;
+          if (!recipe.analyzedInstructions || recipe.analyzedInstructions.length === 0) {
+            // Get details endpoint as fallback
+            const detailResp = await fetch(
+              `https://api.spoonacular.com/recipes/${recipe.id}/information?apiKey=${apiKey}`
+            );
+            recipeDetails = await detailResp.json();
+          }
+          // Compose steps/instructions
+          let steps = [];
+          if (recipeDetails.analyzedInstructions && recipeDetails.analyzedInstructions.length > 0) {
+            steps =
+              recipeDetails.analyzedInstructions[0].steps.map((s) => s.step) ||
+              [];
+          } else if (typeof recipeDetails.instructions === "string") {
+            // Fallback: split by periods if no structured instructions
+            steps =
+              recipeDetails.instructions
+                .split(/(?<=\.)\s+/)
+                .filter((s) => s.trim().length > 0);
+          }
+          // Compose nutrition information: use "nutrition" if present, otherwise estimate basic macros
+          let nutrition = { calories: 0, carbs: 0, fats: 0, protein: 0 };
+          if (
+            recipeDetails.nutrition &&
+            recipeDetails.nutrition.nutrients
+          ) {
+            for (const n of recipeDetails.nutrition.nutrients) {
+              if (n.name.toLowerCase().includes("calories")) nutrition.calories = Math.round(n.amount);
+              if (n.name.toLowerCase().includes("carbohydrate")) nutrition.carbs = Math.round(n.amount);
+              if (n.name.toLowerCase().includes("fat")) nutrition.fats = Math.round(n.amount);
+              if (n.name.toLowerCase().includes("protein")) nutrition.protein = Math.round(n.amount);
+            }
+          } else if (recipeDetails.calories) {
+            // Sometimes calories is available as a top-level field
+            nutrition.calories = Math.round(recipeDetails.calories);
+          }
+          // Prepare smart tags as a basic example (could be improved with more analysis)
+          const lowerTitle = (recipeDetails.title || "").toLowerCase();
+          const tags = [];
+          if (recipeDetails.vegetarian) tags.push("Vegan");
+          if (nutrition.carbs < 25) tags.push("Low-Carb");
+          if (nutrition.protein > 15) tags.push("High Protein");
+          if (nutrition.calories < 350) tags.push("Healthy");
+          if (/nachos|fries|burger|chip|fried|junk/.test(lowerTitle)) tags.push("Junk");
+          if (
+            /sugar|syrup|honey|sweet|dessert|pie|cake/.test(lowerTitle) ||
+            nutrition.carbs > 35
+          )
+            tags.push("Avoid for Diabetics");
+
+          return {
+            id: recipeDetails.id,
+            name: recipeDetails.title,
+            image: recipeDetails.image,
+            prep_time:
+              recipeDetails.readyInMinutes || recipeDetails.preparationMinutes || "--",
+            ingredients:
+              recipeDetails.extendedIngredients && recipeDetails.extendedIngredients.length > 0
+                ? recipeDetails.extendedIngredients.map(
+                    (i) =>
+                      `${i.original || i.name} ${
+                        i.amount
+                          ? `(${Number(i.amount).toFixed(1)}${i.unit ? " " + i.unit : ""})`
+                          : ""
+                      }`
+                  )
+                : recipeDetails.ingredients ||
+                  (recipeDetails.summary ? [recipeDetails.summary] : []),
+            steps: steps.length > 0 ? steps : ["Instructions not available."],
+            nutrition,
+            tags,
+          };
+        })
+      );
+      setRecipes(recipesData);
     } catch (e) {
       setRecipes([]);
       // eslint-disable-next-line
-      alert("Failed to fetch recipes. (API not connected)");
+      alert("Failed to fetch recipes. The Spoonacular API may have reached its quota or key is invalid.");
     } finally {
       setLoading(false);
     }
@@ -460,56 +551,6 @@ function NutritionBars({ nutrition, showLabels }) {
       })}
     </div>
   );
-}
-
-// --- MOCK DATA / UTILITIES for UI Demo ---
-
-function getMockRecipes(ingredients = []) {
-  // This is dummy function. In production, call real API.
-  // For mock: pretend each ingredient triggers a themed recipe plus one fun recipe.
-  return [
-    {
-      id: "r1",
-      name: "Tomato & Cheese Frittata",
-      image: "https://source.unsplash.com/300x200/?frittata,egg,cheese",
-      prep_time: 20,
-      ingredients: ["Eggs", "Tomato", "Cheese", "Salt", "Pepper"],
-      steps: [
-        "Beat eggs and seasonings.",
-        "Sauté tomato in a pan.",
-        "Add eggs, top with cheese, cook until set."
-      ],
-      nutrition: { calories: 350, carbs: 8, fats: 24, protein: 19 },
-      tags: ["Healthy", "Low-Carb", "High Protein"]
-    },
-    {
-      id: "r2",
-      name: "Crispy Veggie Wrap",
-      image: "https://source.unsplash.com/300x200/?wrap,vegetable,food",
-      prep_time: 15,
-      ingredients: ["Tortilla", "Lettuce", "Veggies", "Hummus", "Pepper"],
-      steps: [
-        "Spread hummus on tortilla.",
-        "Add veggies & lettuce.",
-        "Wrap tightly and serve."
-      ],
-      nutrition: { calories: 300, carbs: 36, fats: 6, protein: 10 },
-      tags: ["Vegan", "Healthy"]
-    },
-    {
-      id: "r3",
-      name: "Loaded Nachos",
-      image: "https://source.unsplash.com/300x200/?nachos,junk-food",
-      prep_time: 10,
-      ingredients: ["Corn Chips", "Cheese", "Beans", "Salsa"],
-      steps: [
-        "Layer chips, beans, cheese, salsa.",
-        "Microwave until cheese melts."
-      ],
-      nutrition: { calories: 520, carbs: 42, fats: 31, protein: 14 },
-      tags: ["Junk", "Avoid for Diabetics", "High Protein"]
-    },
-  ];
 }
 
 export default App;
