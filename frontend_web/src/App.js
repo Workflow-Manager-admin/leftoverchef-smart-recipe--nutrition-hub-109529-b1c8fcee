@@ -155,27 +155,24 @@ function App() {
   };
 
   // PUBLIC_INTERFACE
-  // Handles API call to get live recipe suggestions from Spoonacular API (instrumented for network debug + fallback patch)
+  // Handles API call to get live recipe suggestions from Spoonacular API (deeply instrumented for network debugging + fallback patch)
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Prepare ingredient list for query
-    console.log("[DEBUG] ingredientList raw state:", ingredientList);
+    // Deep LOGGING: Output ingredientLists, selection, and types
+    console.log("[DEEP-API-LOG] Raw ingredientList state:", ingredientList);
     const includedIngredientsArr = ingredientList.filter((item) => item.selected);
-    console.log("[DEBUG] Filtered selected ingredientList array:", includedIngredientsArr);
+    console.log("[DEEP-API-LOG] Filtered selected ingredientList array:", includedIngredientsArr);
 
     const includedIngredients = includedIngredientsArr
       .map((item) => item.name)
       .join(",");
 
-    // LOGGING/DEBUG: show outgoing ingredient params
-    console.log(
-      "[RecipeSearch] IncludedIngredients for search STRING:",
-      includedIngredients
-    );
-    console.log("[RecipeSearch] Full outgoing ingredientList array for API:", JSON.stringify(includedIngredientsArr, null, 2));
+    // LOGGING: Outbound request params and what will be sent to Spoonacular
+    console.log("[DEEP-API-LOG] IncludedIngredients for search STRING:", includedIngredients);
+    console.log("[DEEP-API-LOG] Outbound ingredientList array (for API):", JSON.stringify(includedIngredientsArr, null, 2));
 
     // API DEBUG STATE: initialize/clear before run
     setApiDebug({ request: null, response: null, error: null });
@@ -209,75 +206,104 @@ function App() {
         includedIngredients
       )}&number=6&instructionsRequired=true&apiKey=${apiKey}`;
       debugRequest.url = searchUrl;
-      console.log("[RecipeSearch] Outbound: complexSearch URL", searchUrl);
+      debugRequest.headers = { "X-No-Headers-In-Fetch": "browser fetch omits user headers" };
+      debugRequest.fullQuery = `${searchUrl}`;
+      debugRequest.ingredientArray = includedIngredientsArr;
+      debugRequest.ingredientInputField = ingredientInput;
+      debugRequest.timestamp = new Date().toISOString();
+
+      // Log all request params and url with key in console
+      // EXPOSING KEY - for dev debug only!
+      window._lastSpoonacularRequest = debugRequest;
+      console.log("[DEEP-API-LOG] => Outbound Spoonacular complexSearch API request:", debugRequest);
 
       const searchResp = await fetch(searchUrl);
 
-      // Log status and headers
-      console.log("[RecipeSearch] complexSearch response status:", searchResp.status, "ok:", searchResp.ok);
+      // Log entire response status and headers
+      console.log("[DEEP-API-LOG] <= complexSearch response: status:", searchResp.status, "ok:", searchResp.ok, "url:", searchUrl);
       let searchDebugHeaders = {};
       try {
         for (const [k, v] of searchResp.headers.entries()) {
           searchDebugHeaders[k] = v;
-          console.log(`[RecipeSearch] searchResp header: ${k}:`, v);
+          console.log(`[DEEP-API-LOG] searchResp header: ${k}:`, v);
         }
       } catch (_e) {}
       debugRequest.headers = searchDebugHeaders;
 
-      // PATCH: capture raw error bodies for quota/key issues
-      if (!searchResp.ok) {
+      // Capture critical error codes: 401, 402, quota errors, etc.
+      if ([401, 402, 403, 429].includes(searchResp.status)) {
         let errTxt = "";
         try { errTxt = await searchResp.text(); } catch {}
-        // Try parse error for quota/key
-        let errMsg = "API connection failed: " + searchResp.status + " " + errTxt;
+        let errMsg = `Spoonacular API critical error (${searchResp.status}): ${errTxt}`;
         setApiDebug({
           request: debugRequest,
           response: null,
           error: errMsg
         });
-        console.error("[RecipeSearch] API connection failed: ", searchResp.status, errTxt);
-        // Attempt to read Spoonacular json error (sometimes has helpful .message)
+        console.error("[DEEP-API-LOG] Spoonacular API HTTP Error", searchResp.status, errTxt);
         let tryJson = null;
         try { tryJson = JSON.parse(errTxt); } catch {}
         if (tryJson && tryJson.message) {
           errMsg += `\n[API.message] ${tryJson.message}`;
         }
-        throw new Error(errMsg);
-      }
-
-      let searchData;
-      try {
-        searchData = await searchResp.json();
-      } catch (jsonErr) {
-        console.error("[RecipeSearch] ERROR: .json() failed parsing for complexSearch resp!", jsonErr);
-        setApiDebug({
-          request: debugRequest,
-          response: null,
-          error: "API response could not be parsed as JSON: " + (jsonErr?.message || String(jsonErr))
-        });
+        // Display error visibly in UI as well, in .error
         setRecipes([{
-          id: "fail-json",
-          name: "API JSON error",
+          id: "spoonacular-critical-api-error",
+          name: "Spoonacular API Auth/Quota Error",
           image: DUMMY_IMG,
           ingredients: [],
           steps: [],
           nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
           tags: [],
-          error: "API response could not be parsed as JSON. Try again later or check your ingredients.",
+          error: "API Error: " + errMsg
         }]);
         setLoading(false);
-        alert("API returned unreadable response (JSON). Try again later or notify developer.");
+        alert("Spoonacular API returned an authentication, quota, or permission error. See Debug Log.");
         return;
       }
-      console.log("[RecipeSearch] complexSearch response data (JSON):", searchData);
+
+      let responseTextForDebug;
+      let searchData;
+      try {
+        responseTextForDebug = await searchResp.clone().text();
+        // Defensive: try parsing json after cloning .text()
+        searchData = JSON.parse(responseTextForDebug);
+      } catch (errParse) {
+        try {
+          searchData = await searchResp.json();
+        } catch (jsonErr) {
+          setApiDebug({
+            request: debugRequest,
+            response: responseTextForDebug,
+            error: "API response unparseable as JSON: " + (jsonErr?.message || String(jsonErr))
+          });
+          setRecipes([{
+            id: "fail-json",
+            name: "Spoonacular API JSON error",
+            image: DUMMY_IMG,
+            ingredients: [],
+            steps: [],
+            nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+            tags: [],
+            error: "API response could not be parsed as JSON. Try again later or check your ingredients."
+          }]);
+          setLoading(false);
+          alert("API returned unreadable response (JSON). Try again later or notify developer.");
+          return;
+        }
+      }
+      // Log raw API response (as text and as parsed JSON)
+      console.log("[DEEP-API-LOG] complexSearch raw response (text):", responseTextForDebug || "<unavailable>");
+      console.log("[DEEP-API-LOG] complexSearch response (JSON):", searchData);
+
       setApiDebug({
         request: debugRequest,
         response: searchData,
         error: null
       });
 
-      // PATCH: Show quota/invalid key as explicit UI error if present
-      if ("message" in searchData && (searchData.message || "").match(/quota|key/i)) {
+      // Show quota/invalid key/blocked as explicit UI error if present
+      if ("message" in (searchData||{}) && (searchData.message || "").match(/quota|key|invalid|access|permission|limit/i)) {
         let apiMessage = searchData.message;
         setApiDebug({
           request: debugRequest,
@@ -299,13 +325,23 @@ function App() {
         return;
       }
 
+      // Show if non-array/empty results are returned
       if (!searchData.results || !Array.isArray(searchData.results) || searchData.results.length === 0) {
         setApiDebug({
           request: debugRequest,
           response: searchData,
           error: "Empty results from API"
         });
-        setRecipes([]);
+        setRecipes([{
+          id: "no-results",
+          name: "No Recipes Found",
+          image: DUMMY_IMG,
+          ingredients: [],
+          steps: [],
+          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+          tags: [],
+          error: "No recipes returned for the selected ingredients. Try different ones, check for typos or API quota."
+        }]);
         setLoading(false);
         alert(
           includedIngredients
@@ -315,44 +351,62 @@ function App() {
         return;
       }
 
-      // 2. For each recipe, fetch /information (detailed data)
+      // 2. For each recipe, fetch /information (detailed data) with deep logging
       const recipesData = await Promise.all(
         searchData.results.map(async (basicRecipe) => {
           try {
             const infoUrl = `https://api.spoonacular.com/recipes/${basicRecipe.id}/information?includeNutrition=true&apiKey=${apiKey}`;
-            console.log("[RecipeSearch] Outbound: recipe/information URL", infoUrl);
+            let infoDebugRequest = {
+              url: infoUrl,
+              id: basicRecipe.id,
+              reqTime: new Date().toISOString(),
+              parentSearchId: debugRequest.url
+            };
+            console.log("[DEEP-API-LOG] => Outbound recipe/information API request:", infoDebugRequest);
 
             const infoResp = await fetch(infoUrl);
             let infoDebugHeaders = {};
             try {
               for (const [k, v] of infoResp.headers.entries()) {
                 infoDebugHeaders[k] = v;
-                console.log(`[RecipeSearch] infoResp (${basicRecipe.id}) header: ${k}:`, v);
+                console.log(`[DEEP-API-LOG] infoResp (${basicRecipe.id}) header: ${k}:`, v);
               }
             } catch (_e) {}
 
-            if (!infoResp.ok) {
-              let infoErr = "";
-              try { infoErr = await infoResp.text(); } catch {}
-              const errMsg = "Missing info for recipe " + basicRecipe.id + ": " + infoResp.status + " " + infoErr;
-              // This doesn't overwrite root API debug panel, but logs for dev
+            // Special: direct log for permissions, quota, etc.
+            if ([401,402,403,429].includes(infoResp.status)) {
+              let infoErrText = "";
+              try { infoErrText = await infoResp.text(); } catch{}
+              const critMsg = `Recipe info call error: [${infoResp.status}] ${infoErrText}`;
               setApiDebug((old) => ({
-                ...(old || {}),
-                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoErr }
+                ...(old||{}),
+                infoRecipe: { id: basicRecipe.id, url: infoUrl, status: infoResp.status, infoErrText: critMsg }
               }));
-              console.error("[RecipeSearch] Info load failed", infoResp.status, infoErr);
-              throw new Error(errMsg);
+              console.error("[DEEP-API-LOG] Recipe info quota/key/permission error", critMsg);
+              return {
+                id: basicRecipe.id,
+                name: "Recipe unavailable (API error)",
+                image: basicRecipe.image,
+                prep_time: "--",
+                ingredients: ["Ingredients not available."],
+                steps: ["Instructions not available."],
+                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+                tags: [],
+                error: critMsg
+              };
             }
 
+            let infoRawText;
             let info;
             try {
-              info = await infoResp.json();
+              infoRawText = await infoResp.clone().text();
+              info = JSON.parse(infoRawText);
             } catch (jsonErr) {
               setApiDebug((old) => ({
-                ...(old || {}),
-                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoJsonError: jsonErr?.message }
+                ...(old||{}),
+                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoJsonError: jsonErr?.message, infoRawText }
               }));
-              console.error(`[RecipeSearch] ERROR: .json() failed for recipe id=${basicRecipe.id}:`, jsonErr);
+              console.error(`[DEEP-API-LOG] ERROR: .json() failed for recipe id=${basicRecipe.id}:`, jsonErr);
               return {
                 id: basicRecipe.id,
                 name: "Recipe unavailable (JSON error)",
@@ -365,7 +419,8 @@ function App() {
                 error: "Could not parse recipe detail response for this recipe. Try another or retry.",
               };
             }
-            console.log(`[RecipeSearch] Recipe info (${basicRecipe.id}):`, info);
+            console.log(`[DEEP-API-LOG] <= Recipe info (${basicRecipe.id}) raw:`, infoRawText);
+            console.log(`[DEEP-API-LOG] Recipe info (${basicRecipe.id}):`, info);
 
             // --- Extract stepwise instructions ---
             let steps = [];
@@ -423,6 +478,27 @@ function App() {
               ingredientsList = info.summary ? [info.summary] : ["Ingredients not available."];
             }
 
+            // PATCH/LOGGING: If mapping to UI structure fails, log in both console and UI error/debug state
+            if (!ingredientsList || !Array.isArray(ingredientsList)) {
+              const mappingErrorMsg = `[DEEP-API-LOG] Mapping ingredients to recipe UI array failed. info.extendedIngredients: ${JSON.stringify(info.extendedIngredients)}, info.ingredients: ${JSON.stringify(info.ingredients)}, info: ${JSON.stringify(info)}`;
+              setApiDebug((old) => ({
+                ...(old || {}),
+                error: mappingErrorMsg
+              }));
+              console.error(mappingErrorMsg);
+              return {
+                id: basicRecipe.id,
+                name: "Mapping Error",
+                image: basicRecipe.image,
+                prep_time: "--",
+                ingredients: ["Unable to map ingredients from API response."],
+                steps: ["No instructions available."],
+                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+                tags: [],
+                error: mappingErrorMsg
+              };
+            }
+
             return {
               id: info.id,
               name: info.title || basicRecipe.title || "Unnamed",
@@ -434,12 +510,12 @@ function App() {
               tags,
             };
           } catch (innerErr) {
-            // Gracefully show fallback for this recipe if fetch failed
+            // Show fallback for this recipe and log in both console/UI
             setApiDebug((old) => ({
               ...(old || {}),
               infoRecipe: { id: basicRecipe.id, innerErr: innerErr?.message || String(innerErr) }
             }));
-            console.error("[RecipeSearch] Error loading recipe details for id", basicRecipe.id, innerErr);
+            console.error("[DEEP-API-LOG] Error loading recipe details for id", basicRecipe.id, innerErr);
             return {
               id: basicRecipe.id,
               name: basicRecipe.title || "Recipe unavailable",
@@ -454,7 +530,8 @@ function App() {
           }
         })
       );
-      console.log("[RecipeSearch] Final recipesData after mapping/Promise.all:", recipesData);
+
+      console.log("[DEEP-API-LOG] Final recipesData after Promise.all/map:", recipesData);
 
       if (!Array.isArray(recipesData)) {
         setApiDebug((old) => ({
@@ -473,7 +550,7 @@ function App() {
           error: `Filtered out ${recipesData.length - cleanRecipes.length} invalid results from recipesData`
         }));
         console.warn(
-          `[RecipeSearch] Cleaned ${recipesData.length - cleanRecipes.length} undefined/null results from recipesData`,
+          `[DEEP-API-LOG] Cleaned ${recipesData.length - cleanRecipes.length} undefined/null results from recipesData`,
           recipesData
         );
       }
@@ -481,9 +558,10 @@ function App() {
       if (cleanRecipes.length > 0) {
         setRecipes(cleanRecipes);
       } else {
+        const mappingFailMsg = `[DEEP-API-LOG] No valid recipes extracted, raw recipesData: ${JSON.stringify(recipesData)}`;
         setApiDebug((old) => ({
           ...(old || {}),
-          error: `No valid recipes extracted, raw recipesData: ${JSON.stringify(recipesData)}`
+          error: mappingFailMsg
         }));
         setRecipes([{
           id: "no-valid",
@@ -495,15 +573,15 @@ function App() {
           tags: [],
           error: "No complete or valid recipes could be parsed for this ingredient selection. (Check API quota and ingredients; see debug log below)."
         }]);
+        console.error(mappingFailMsg);
       }
     } catch (e) {
       setRecipes([]);
-      let message = "[RecipeSearch] ERROR in handleFindRecipes (main try/catch): " + (e?.message || String(e));
+      let message = "[DEEP-API-LOG] ERROR in handleFindRecipes (main try/catch): " + (e?.message || String(e));
       setApiDebug((old) => ({
         ...(old || {}),
         error: message
       }));
-      // eslint-disable-next-line
       console.error(message);
       // Show on page (user and developer)
       setRecipes([{
@@ -528,7 +606,7 @@ function App() {
           error: "Spoonacular API quota may be exceeded or API key is invalid."
         }));
         console.warn(
-          "[RecipeSearch][UserHelp] Spoonacular API quota may be exceeded or API key is invalid. See https://spoonacular.com/food-api/docs#Errors for more info or request a new key."
+          "[DEEP-API-LOG][UserHelp] Spoonacular API quota may be exceeded or API key is invalid. See https://spoonacular.com/food-api/docs#Errors for more info or request a new key."
         );
       }
       alert(
@@ -539,7 +617,7 @@ function App() {
       setLoading(false);
       // Log most recent recipes state
       setTimeout(() => {
-        console.log("[RecipeSearch] Post-fetch: Final recipes state in memory:", recipes);
+        console.log("[DEEP-API-LOG] Post-fetch: Final recipes state in memory:", recipes);
       }, 500);
     }
   };
