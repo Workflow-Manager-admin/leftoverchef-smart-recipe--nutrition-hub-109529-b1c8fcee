@@ -281,15 +281,18 @@ function App() {
               try {
                 // Nutritionix API details
                 const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
+                // Place your credentials here (for full security move both to .env and process.env for production)
                 const NUTRITIONIX_API_KEY = "1f64bf57416ee00fa257098f33be2843";
-                // Docs recommend adding an App ID, not required here; just send API key
+                const NUTRITIONIX_APP_ID = "f7406b29"; // <---- PATCH: Replace with your Nutritionix APP ID if different
+
+                // Nutritionix requires BOTH headers
                 const resp = await fetch(NUTRITIONIX_ENDPOINT, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
                     "x-app-key": NUTRITIONIX_API_KEY,
+                    "x-app-id": NUTRITIONIX_APP_ID,
                   },
-                  // App ID header not required, tested (but: can add if quota issues)
                   body: JSON.stringify({
                     query: query,
                   }),
