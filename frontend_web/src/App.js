@@ -712,7 +712,7 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
               }
             </div>
           </div>
-          {/* The heart is now rendered after the overlay so its stacking order stays above overlay */}
+          {/* Render the heart after the overlay for stacking, higher z-index ensures it floats above and is clickable */}
           <button
             className={
               "fav-heart-btn" +
@@ -734,6 +734,10 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
             title={isFav(r.id) ? "Remove from favorites" : "Add to favorites"}
             tabIndex={0}
             type="button"
+            style={{
+              zIndex: 99, // force super-high z for extra reliability
+              pointerEvents: "auto"
+            }}
           >
             <svg
               width="28"

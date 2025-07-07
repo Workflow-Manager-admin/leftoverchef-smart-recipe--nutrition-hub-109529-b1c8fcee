@@ -277,12 +277,12 @@
   pointer-events: auto;
 }
 
-/* The heart icon floats above overlay and remains click-accessible in all states */
+/* Improved: Guarantee heart is always above and clickable */
 .fav-heart-btn {
   position: absolute;
   right: 13px;
   top: 16px;
-  z-index: 51; /* Float above overlay */
+  z-index: 99; /* Highest for safety: always above anything in card */
   background: none;
   border: none;
   padding: 0.21em 0.18em;
@@ -302,6 +302,27 @@
   /* KEY: Always clickable even with overlay present */
   pointer-events: auto !important;
 }
+
+/* Prevent overlay from blocking interaction with the heart icon specifically */
+.recipe-hover-overlay {
+  pointer-events: auto;
+  z-index: 22;
+}
+
+/* Ensure overlay does NOT block pointer events at the .fav-heart-btn spot */
+.recipe-card {
+  position: relative;
+}
+
+.recipe-card .fav-heart-btn {
+  z-index: 99 !important;
+  pointer-events: auto !important;
+}
+
+.recipe-hover-overlay {
+  /* Overlay responds, but does NOT stop heart events */
+}
+
 
 /* Hide overlay pointer events over heart area, but allow events inside overlay elsewhere */
 .recipe-hover-overlay {
