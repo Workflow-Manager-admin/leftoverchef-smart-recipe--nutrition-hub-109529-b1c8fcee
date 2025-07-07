@@ -281,11 +281,15 @@ function App() {
               try {
                 // Nutritionix API details
                 const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
-                // Place your credentials here (for full security move both to .env and process.env for production)
-                const NUTRITIONIX_API_KEY = "1f64bf57416ee00fa257098f33be2843";
-                const NUTRITIONIX_APP_ID = "f7406b29"; // <---- PATCH: Replace with your Nutritionix APP ID if different
+                // Fetch credentials from environment for security (now injected through React build)
+                const NUTRITIONIX_API_KEY = process.env.REACT_APP_NUTRITIONIX_API_KEY;
+                const NUTRITIONIX_APP_ID = process.env.REACT_APP_NUTRITIONIX_APP_ID;
 
-                // Nutritionix requires BOTH headers
+                // Nutritionix requires BOTH headers (app-key & app-id)
+                if (!NUTRITIONIX_API_KEY || !NUTRITIONIX_APP_ID) {
+                  nutritionixError = "Nutritionix credentials are missing: Make sure REACT_APP_NUTRITIONIX_API_KEY and REACT_APP_NUTRITIONIX_APP_ID are set in your .env file.";
+                }
+
                 const resp = await fetch(NUTRITIONIX_ENDPOINT, {
                   method: "POST",
                   headers: {
