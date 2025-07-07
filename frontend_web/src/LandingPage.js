@@ -11,6 +11,11 @@ import "./LandingPage.css";
  */
 function LandingPage({ onStart }) {
   // No state or side effects; presentational only.
+
+  // Add deep debug logging of render and button fires
+  // eslint-disable-next-line no-console
+  console.debug("[LANDINGPAGE-DEBUG] LandingPage rendered", { onStartType: typeof onStart });
+
   return (
     <div className="landing-bg lively-bg">
       {/* Dynamic animated/floating confetti & icons */}
@@ -96,7 +101,24 @@ function LandingPage({ onStart }) {
       {/* Upgraded playful Start Button with fun animation */}
       <button
         className="landing-start-btn animated-pop lively-wiggle"
-        onClick={() => { if (typeof onStart === "function") onStart(); }} // Defensive: only if onStart present
+        onClick={() => {
+          // Instrument: log every click attempt and trap errors
+          // eslint-disable-next-line no-console
+          console.log("[LANDINGPAGE-DEBUG] Start Cooking! button clicked");
+          try {
+            if (typeof onStart === "function") {
+              onStart();
+              // eslint-disable-next-line no-console
+              console.log("[LANDINGPAGE-DEBUG] onStart func executed (start-tracked)");
+            } else {
+              // eslint-disable-next-line no-console
+              console.warn("[LANDINGPAGE-DEBUG] onStart prop missing or not a function", { onStart });
+            }
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("[LANDINGPAGE-DEBUG] Exception in onStart", e);
+          }
+        }}
         aria-label="Start Cooking!"
         onMouseDown={e => {
           // Confetti burst effect for button

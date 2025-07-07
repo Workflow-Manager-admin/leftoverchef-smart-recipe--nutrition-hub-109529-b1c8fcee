@@ -2,7 +2,31 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import "./RecipeStyles.css";
 import CookingChatbot from "./CookingChatbot";
-import LandingPage from "./LandingPage"; // Confirmed: LandingPage imported and used for early landing screen
+let LandingPage;
+try {
+  // eslint-disable-next-line no-console
+  console.debug("[APP-DEBUG] Attempting LandingPage import...");
+  LandingPage = require("./LandingPage").default;
+  // Success check for intentional error-logging in dev
+  if (typeof LandingPage !== "function" && typeof LandingPage !== "object") {
+    // eslint-disable-next-line no-console
+    console.error("[APP-DEBUG] LandingPage import successful, but not a component!", {LandingPage});
+  } else {
+    // eslint-disable-next-line no-console
+    console.log("[APP-DEBUG] LandingPage import success:", typeof LandingPage);
+  }
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.error("[APP-DEBUG] LandingPage import error!", e);
+  LandingPage = function FallbackLanding(props) {
+    return (
+      <div style={{color: "red", fontWeight: 700}}>
+        [ERROR] Could not load LandingPage component.<br />
+        {String(e && e.message ? e.message : e)}
+      </div>
+    )
+  }
+}
 // import logo from "./logo_cookchef.svg"; // cooking-themed logo
 
 /* 
@@ -165,7 +189,12 @@ function App() {
     // Accept string "true", anything else is treated as false
     return saved === "true";
   };
-  const [started, setStarted] = useState(getInitialStarted);
+  const [started, setStarted] = useState(() => {
+    const initial = getInitialStarted();
+    // eslint-disable-next-line no-console
+    console.log("[LANDINGPAGE-DEBUG] State Initialization: setting started =", initial);
+    return initial;
+  });
 
   // Extra: log every render for diagnostics
   useEffect(() => {
@@ -211,9 +240,25 @@ function App() {
     // Log this hit for debugging
     // eslint-disable-next-line no-console
     console.log("[LANDINGPAGE-DEBUG] Conditional: showing LandingPage (started = false)");
-    // Dev-only utility: Uncomment the line below to forcibly reset state for testing
-    // sessionStorage.removeItem("started");
-    return <LandingPage onStart={handleLandingStart} />;
+    try {
+      // Defensive catch for LandingPage runtime or render failures
+      // eslint-disable-next-line no-console
+      console.debug("[LANDINGPAGE-DEBUG] Rendering <LandingPage /> with onStart", { handleLandingStartType: typeof handleLandingStart });
+      return <LandingPage onStart={handleLandingStart} />;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[LANDINGPAGE-DEBUG] ERROR in LandingPage render branch!", err);
+      return (
+        <div style={{
+          background: "#fff2ed", color: "#a12a1e", fontWeight: 900,
+          padding: "1.5em", border: "2px solid #a12a1e", borderRadius: 14,
+          margin: "1.7em", fontSize: "1.2em"
+        }}>
+          [ERROR]: LandingPage render crash.<br />
+          {String(err && err.message ? err.message : err)}
+        </div>
+      );
+    }
   }
 
   // PUBLIC_INTERFACE: Handles addition of ingredients from input
