@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import "./RecipeStyles.css";
 import CookingChatbot from "./CookingChatbot";
+import LandingPage from "./LandingPage";
 import logo from "./logo_cookchef.svg"; // cooking-themed logo
 
 // --- Color constants from requirements
@@ -96,8 +97,16 @@ function ApiDebugPanel() {
   );
 }
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ * App is the main component, now includes an animated playful landing screen before showing the main app.
+ */
 function App() {
+  // All hooks MUST be at the very top, before ANY conditionals or return!
+  const [started, setStarted] = useState(() => {
+    const saved = sessionStorage.getItem("started");
+    return saved === "true";
+  });
   const [theme] = useState("light");
   const [ingredientInput, setIngredientInput] = useState("");
   const [ingredientList, setIngredientList] = useState([]); // [{name, quantity, selected}]
@@ -105,9 +114,18 @@ function App() {
   const [favorites, setFavorites] = useState([]);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  // For API/network logs and errors
   const [apiDebug, setApiDebug] = useState({ request: null, response: null, error: null });
+
+  // (Second set of duplicate useEffect blocks REMOVED)
+
+  // --- Only after all hooks, conditionally render ---
+  const handleLandingStart = () => {
+    setStarted(true);
+    sessionStorage.setItem("started", "true");
+  };
+  if (!started) {
+    return <LandingPage onStart={handleLandingStart} />;
+  }
 
   // PUBLIC_INTERFACE: Handles addition of ingredients from input
   const handleAddIngredient = () => {
@@ -446,18 +464,7 @@ function App() {
   // PUBLIC_INTERFACE: Check for favorite
   const isFavorite = (id) => favorites.some((r) => r.id === id);
 
-  // Load favorites from localStorage on mount
-  useEffect(() => {
-    const favs = localStorage.getItem("favorites");
-    if (favs) {
-      setFavorites(JSON.parse(favs));
-    }
-  }, []);
-
-  // Save favorites to localStorage
-  useEffect(() => {
-    localStorage.setItem("favorites", JSON.stringify(favorites));
-  }, [favorites]);
+  // (Second set of duplicate useEffect blocks REMOVED)
 
   // --- UI Rendering ---
   return (
