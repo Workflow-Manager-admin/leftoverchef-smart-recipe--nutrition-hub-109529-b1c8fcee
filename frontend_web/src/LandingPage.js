@@ -96,7 +96,7 @@ function LandingPage({ onStart }) {
       {/* Upgraded playful Start Button with fun animation */}
       <button
         className="landing-start-btn animated-pop lively-wiggle"
-        onClick={onStart}
+        onClick={() => { if (typeof onStart === "function") onStart(); }} // Defensive: only if onStart present
         aria-label="Start Cooking!"
         onMouseDown={e => {
           // Confetti burst effect for button

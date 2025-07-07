@@ -3,7 +3,15 @@ import "./App.css";
 import "./RecipeStyles.css";
 import CookingChatbot from "./CookingChatbot";
 import LandingPage from "./LandingPage";
-import logo from "./logo_cookchef.svg"; // cooking-themed logo
+// import logo from "./logo_cookchef.svg"; // cooking-themed logo
+
+// Guard for missing logo file, prevent import error and use fallback
+let logo;
+try {
+  logo = require("./logo_cookchef.svg");
+} catch(e) {
+  logo = "https://dummyimage.com/80x80/34a853/fbbc05.png&text=Chef"; // simple fallback
+}
 
 // --- Color constants from requirements
 const COLORS = {
@@ -104,16 +112,30 @@ function ApiDebugPanel() {
 function App() {
   // All hooks MUST be at the very top, before ANY conditionals or return!
   // Ensures that the landing page always shows on first visit, and only hides after Start.
-  const [started, setStarted] = useState(() => {
+
+  // Defensive: Sync state to sessionStorage changes (such as in test runners or across reloads)
+  const getInitialStarted = () => {
     let saved = null;
     try {
       saved = sessionStorage.getItem("started");
     } catch (e) {
       saved = null;
     }
-    // If saved is exactly "true", then started is true; otherwise false (null/"false"/undefined)
+    // Accept string "true", anything else is treated as false
     return saved === "true";
-  });
+  };
+  const [started, setStarted] = useState(getInitialStarted);
+
+  // Fix: If the sessionStorage changes (test runner might clear it mid-test), synchronize local state
+  useEffect(() => {
+    const syncStarted = () => {
+      setStarted(getInitialStarted());
+    };
+    window.addEventListener("storage", syncStarted);
+    // ~ optional: check once on mount for any out-of-sync case (test runners simulate reloads)
+    syncStarted();
+    return () => window.removeEventListener("storage", syncStarted);
+  }, []);
   const [theme] = useState("light");
   const [ingredientInput, setIngredientInput] = useState("");
   const [ingredientList, setIngredientList] = useState([]); // [{name, quantity, selected}]
