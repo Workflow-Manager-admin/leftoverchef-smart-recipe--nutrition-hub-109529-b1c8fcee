@@ -102,6 +102,12 @@ function App() {
       .map((item) => item.name)
       .join(",");
 
+    if (!includedIngredients) {
+      setLoading(false);
+      alert("Please select at least one ingredient before searching for recipes.");
+      return;
+    }
+
     // Use provided API key directly for now (NOTE: not safe for prod!)
     const apiKey = "dc49e1088db742eea575fd4596dee395";
 
@@ -117,6 +123,11 @@ function App() {
       if (!searchData.results || searchData.results.length === 0) {
         setRecipes([]);
         setLoading(false);
+        alert(
+          includedIngredients
+            ? "No recipes found for the selected ingredients. Try different ones or check for typos."
+            : "Please add and select at least one ingredient."
+        );
         return;
       }
 
