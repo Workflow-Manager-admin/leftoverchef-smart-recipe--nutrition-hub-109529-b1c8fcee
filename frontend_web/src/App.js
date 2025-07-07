@@ -219,7 +219,7 @@ function App() {
 
       // 2. Fetch detailed info (instructions etc) for each
       const details = await Promise.all(
-        topMeals.map(async (item) => {
+        topMeals.map(async (item, mealIndex) => {
           try {
             const detailRes = await fetch(
               `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${item.idMeal}`
@@ -240,17 +240,27 @@ function App() {
 
             // Ingredients - TheMealDB provides up to 20 manually
             let ingredients = [];
+            let ingredientPairs = [];
             for (let idx = 1; idx <= 20; idx++) {
               const nm = meal[`strIngredient${idx}`];
               const amt = meal[`strMeasure${idx}`];
               if (nm && nm.trim()) {
+                // For display
                 ingredients.push(
                   `${nm.trim()}${amt && amt.trim() ? ` (${amt.trim()})` : ""}`
                 );
+                // For Nutritionix: try compact and user-like, e.g. "2 cups flour"
+                if (amt && amt.trim()) {
+                  ingredientPairs.push(`${amt.trim()} ${nm.trim()}`); // "2 cups flour"
+                } else {
+                  ingredientPairs.push(nm.trim()); // "flour"
+                }
               }
             }
             if (ingredients.length === 0)
               ingredients = ["Ingredients not available."];
+            if (ingredientPairs.length === 0)
+              ingredientPairs = [];
 
             // Smart tags (basic heuristics)
             const tags = [];
@@ -262,8 +272,68 @@ function App() {
             if ((meal.strMeal || "").toLowerCase().match(/protein/)) tags.push("High Protein");
             // no reliable way to estimate carbs/fats without nutrition
 
-            // Always warn about lack of nutrition
+            // -------- Nutritionix integration -----------
             let nutrition = null;
+            let nutritionixError = null;
+            if (ingredientPairs.length > 0) {
+              // Compose the input string for Nutritionix
+              const query = ingredientPairs.join(", ");
+              try {
+                // Nutritionix API details
+                const NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/nutrients";
+                const NUTRITIONIX_API_KEY = "1f64bf57416ee00fa257098f33be2843";
+                // Docs recommend adding an App ID, not required here; just send API key
+                const resp = await fetch(NUTRITIONIX_ENDPOINT, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-app-key": NUTRITIONIX_API_KEY,
+                  },
+                  // App ID header not required, tested (but: can add if quota issues)
+                  body: JSON.stringify({
+                    query: query,
+                  }),
+                });
+                // Rate limiting: Nutritionix returns 429, handle gracefully
+                if (resp.status === 429) {
+                  nutritionixError = "Rate limited by Nutritionix. Please wait and try again.";
+                } else if (!resp.ok) {
+                  // Most errors return 4xx
+                  nutritionixError = `Nutritionix error: ${resp.status} ${resp.statusText}`;
+                } else {
+                  const nutriJson = await resp.json();
+                  // Nutritionix returns foods: [..], sum all values
+                  let cal = 0, carbs = 0, pro = 0, fat = 0;
+                  if (nutriJson && nutriJson.foods && Array.isArray(nutriJson.foods)) {
+                    nutriJson.foods.forEach((fd) => {
+                      if (typeof fd.nf_calories === "number") cal += fd.nf_calories;
+                      if (typeof fd.nf_total_carbohydrate === "number") carbs += fd.nf_total_carbohydrate;
+                      if (typeof fd.nf_protein === "number") pro += fd.nf_protein;
+                      if (typeof fd.nf_total_fat === "number") fat += fd.nf_total_fat;
+                    });
+                  }
+                  // Parse out values to reasonable ranges (round to int for calories, 1dp for grams)
+                  // Don't display zeros if every value is 0
+                  const totalNutrients = cal + carbs + pro + fat;
+                  if (totalNutrients > 0) {
+                    nutrition = {
+                      calories: Math.round(cal),
+                      carbs: Math.round(carbs * 10) / 10,
+                      protein: Math.round(pro * 10) / 10,
+                      fats: Math.round(fat * 10) / 10,
+                    };
+                  } else {
+                    nutritionixError = "Nutrition breakdown not available for these inputs.";
+                  }
+                }
+              } catch (e) {
+                // Network or JSON error
+                nutritionixError = "Error contacting Nutritionix: " + (e && e.message ? e.message : String(e));
+              }
+            } else {
+              nutritionixError = "No recognizable ingredient/measures for nutrition analysis.";
+            }
+            // End Nutritionix integration
 
             return {
               id: meal.idMeal,
@@ -272,8 +342,9 @@ function App() {
               prep_time: meal.strArea || "--",
               ingredients,
               steps,
-              nutrition, // null
+              nutrition, // possibly null
               tags,
+              nutritionixError, // for debug
             };
           } catch (err) {
             return {
@@ -603,6 +674,20 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
               <span>Prep time: {r.prep_time} min</span>
             </div>
             <NutritionBars nutrition={r.nutrition} />
+            {/* Nutritionix error or rate limit info, show in small muted text under bars if available */}
+            {r.nutritionixError && (
+              <div
+                style={{
+                  color: "#b12c2c",
+                  fontSize: "0.98em",
+                  margin: ".22em 0 .05em 0",
+                  fontStyle: "italic",
+                }}
+                aria-live="polite"
+              >
+                {r.nutritionixError}
+              </div>
+            )}
             <button
               className={isFav(r.id) ? "fav-btn selected" : "fav-btn"}
               aria-label={isFav(r.id) ? "Unfavorite" : "Favorite"}
@@ -672,6 +757,12 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
         )}
         <h4>Nutritional Breakdown</h4>
         <NutritionBars nutrition={recipe.nutrition} showLabels />
+        {/* Show nutrition error in detail modal as well, e.g. rate limit, missing, etc */}
+        {recipe.nutritionixError && (
+          <div className="muted" style={{ color: "#b12c2c", fontStyle: "italic", margin: "0.7em 0" }}>
+            {recipe.nutritionixError}
+          </div>
+        )}
         <button
           className={isFav(recipe.id) ? "fav-btn selected" : "fav-btn"}
           onClick={() => onFav(recipe)}
@@ -749,13 +840,9 @@ function SmartTags({ tags }) {
   Always shown on recipes; showLabels prop can force left labels in modals.
 */
 function NutritionBars({ nutrition, showLabels }) {
-  // If no data, indicate in UI that nutrition is unavailable
+  // If no data, show nothing in summary card (handled by details modal for error)
   if (!nutrition) {
-    return (
-      <div className="nutrition-bars enhanced-nutrition" style={{ fontStyle: "italic", color: "#b12c2c", marginTop: 7 }}>
-        Nutrition breakdown not available for this recipe.
-      </div>
-    );
+    return null;
   }
   // nutrition: {calories, carbs, fats, protein}
   const stats = [
