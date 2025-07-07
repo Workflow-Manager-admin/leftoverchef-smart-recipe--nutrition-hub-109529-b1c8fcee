@@ -6,9 +6,108 @@
   align-items: center;
   justify-content: center;
   position: fixed;
-  width: 100%;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
   top: 0; left: 0; z-index: 9999;
   animation: fadein-bg 1.2s;
+}
+
+.lively-bg {
+  /* Dramatic, bold, animated background gradient layers */
+  background: radial-gradient(circle at 85% 16%, #fee44058 0%, #ffd6ef33 16%, #fff7e2 33%),
+              radial-gradient(circle at 26% 90%, #f25fef44 0%, #fff9c4cc 44%, #f7fdff 100%),
+              linear-gradient(112deg, #fff7e2 0%, #f7fdff 70%, #ebffd6 100%);
+  animation: lively-bg-move 8.5s linear infinite alternate;
+}
+@keyframes lively-bg-move {
+  0%    { background-position: 80% 12%, 18% 90%, 0% 100%; }
+  60%   { background-position: 90% 12%,  20% 85%, 30% 100%;}
+  100%  { background-position: 84% 18%, 31% 95%, 0% 100%; }
+}
+
+/* --- Confetti & Animated/Floating Elements --- */
+.confetti-group {
+  pointer-events: none;
+  z-index: 13;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  position: absolute;
+  overflow: visible;
+}
+.confetti, .confetti-group .confetti {
+  position: absolute;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 16;
+}
+
+.confetti1 { width: 17px; height: 17px; left: 17vw; top: 10vh; background: #ffd60a; border-radius: 55% 50% 60% 65%; animation: confetti-fall1 5.2s infinite cubic-bezier(.55,.46,.51,1.19);}
+.confetti2 { width: 13px; height: 12px; left: 63vw; top: 7vw; background: #ea4335; border-radius: 30%; animation: confetti-fall2 6.6s infinite .8s;}
+.confetti3 { width: 12px; height: 15px; left: 82vw; top: 14vh; background: #34a853; border-radius: 80% 20% 70% 55%; animation: confetti-fall3 4.6s infinite .36s;}
+.confetti4 { width: 16px; height: 13px; left: 38vw; top: 23vh; background: #f25fef; border-radius: 55% 65% 33% 69%; animation: confetti-fall4 5.4s infinite .45s;}
+
+/* --- Floating animated veggies & utensils --- */
+.veggie-tomato {
+  left: 71vw; top: 21vh; width: 30px; height: 30px;
+  background: url('data:image/svg+xml;utf8,<svg fill="none" viewBox="0 0 32 32" height="31" width="31" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="19" rx="12" ry="9" fill="%23ea4335"/><ellipse cx="16" cy="18" rx="10" ry="7.5" fill="%23ff6e35" opacity="0.75"/><path d="M16 9 l-2-6 2 2 2-2-2 6z" stroke="%234ea44b" stroke-width="2.4" fill="none"/><ellipse cx="16" cy="9" rx="3.8" ry="2.3" fill="%234ea44b"/></svg>') no-repeat center/contain;
+  animation: float-veggie 5.7s cubic-bezier(.33,.7,.46,1.1) infinite 0.4s;
+}
+.veggie-broccoli {
+  left: 20vw; top: 60vh; width: 31px; height: 31px;
+  background: url('data:image/svg+xml;utf8,<svg width="32" height="31" viewBox="0 0 32 31"><ellipse cx="16" cy="23" rx="10" ry="7" fill="%2379d839"/><ellipse cx="16" cy="16" rx="7" ry="5" fill="%234ecc5a"/><ellipse cx="12" cy="20" rx="3" ry="2" fill="%2379d839"/><ellipse cx="20" cy="20" rx="3" ry="2" fill="%2379d839"/></svg>') no-repeat center/contain;
+  animation: float-veggie 6s ease-in-out infinite 1.2s;
+}
+.veggie-carrot {
+  left: 48vw; top: 75vh; width: 33px; height: 32px;
+  background: url('data:image/svg+xml;utf8,<svg width="30" height="32" viewBox="0 0 30 32"><rect x="12" y="8" width="6" height="18" rx="3" fill="%23ffc37b" stroke="%23fa7a24" stroke-width="2" /><ellipse cx="15" cy="14" rx="3" ry="2" fill="%23fa7a24" /><ellipse cx="15" cy="8" rx="3" ry="3" fill="%2345cc4c" opacity="0.76"/></svg>') no-repeat center/contain;
+  animation: float-veggie 8s cubic-bezier(.69,.7,.61,1) infinite 2.3s;
+}
+.veggie-lemon {
+  left: 11vw; top: 37vh; width: 32px; height: 32px;
+  background: url('data:image/svg+xml;utf8,<svg width="32" height="32" viewBox="0 0 32 32"><ellipse cx="16" cy="16" rx="9" ry="7" fill="%23fff560" /><ellipse cx="21" cy="13" rx="2.5" ry="1.7" fill="%23ffe400" /><ellipse cx="11" cy="19" rx="2.5" ry="1.7" fill="%23ffe400" /></svg>') no-repeat center/contain;
+  animation: float-veggie 7.2s cubic-bezier(.61,.63,.41,1.06) infinite 1s;
+}
+.utensil-fork {
+  left: 76vw; top: 61vh; width: 28px; height: 34px;
+  background: url('data:image/svg+xml;utf8,<svg width="28" height="34" viewBox="0 0 28 34"><rect x="13" y="11" width="2" height="19" fill="%23798db7"/><rect x="9" y="7" width="2" height="13" fill="%23aad2fa"/><rect x="17" y="7" width="2" height="13" fill="%23aad2fa"/><ellipse cx="14" cy="7" rx="7" ry="4" fill="%23e4f1fa"/></svg>') no-repeat center/contain;
+  animation: float-utensil 6.3s ease-in-out infinite 0s;
+}
+.utensil-spoon {
+  left: 30vw; top: 21vh; width: 26px; height: 34px;
+  background: url('data:image/svg+xml;utf8,<svg width="28" height="34" viewBox="0 0 28 34"><ellipse cx="16" cy="10" rx="7" ry="8" fill="%23fde1a0"/><rect x="14" y="16" width="3" height="14" fill="%23bda984"/></svg>') no-repeat center/contain;
+  animation: float-utensil 5.1s ease-in-out infinite 1.3s;
+}
+
+/* --- Confetti Animations --- */
+@keyframes confetti-fall1 {
+  0% { transform: translateY(-10px) rotate(-14deg);}
+  60% { transform: translateY(70vh) rotate(33deg);}
+  100% { transform: translateY(-10px) rotate(-14deg);}
+}
+@keyframes confetti-fall2 {
+  0% { transform: translateY(-30px) rotate(9deg);}
+  50% { transform: translateY(54vh) rotate(-33deg);}
+  100% { transform: translateY(-30px) rotate(9deg);}
+}
+@keyframes confetti-fall3 {
+  0% { transform: translateY(0px) scale(1);}
+  70% { transform: translateY(54vh) scale(1.12);}
+  100% { transform: translateY(0px) scale(1);}
+}
+@keyframes confetti-fall4 {
+  0% { transform: translateY(-20px) rotate(-25deg);}
+  56% { transform: translateY(50vh) rotate(28deg);}
+  100% { transform: translateY(-20px) rotate(-25deg);}
+}
+@keyframes float-veggie {
+  0% { transform: translateY(0) scale(1) rotate(-10deg);}
+  60% { transform: translateY(-45px) scale(1.07) rotate(8deg);}
+  100% { transform: translateY(0) scale(1) rotate(-10deg);}
+}
+@keyframes float-utensil {
+  0% { transform: translateY(-14px) rotate(0deg);}
+  50% { transform: translateY(22px) rotate(14deg);}
+  100% { transform: translateY(-14px) rotate(0deg);}
 }
 
 @keyframes fadein-bg {
@@ -145,25 +244,87 @@
 .landing-start-btn {
   padding: 19px 45px;
   border-radius: 30px;
-  background: linear-gradient(90deg, #fbbc05 25%, #ea4335 97%);
-  color: #fff9e4;
+  background: linear-gradient(91deg, #f25fef 14%, #fbbc05 63%, #34a853 99%);
+  color: #fffce9;
   font-size: 1.5em;
-  font-weight: 900;
+  font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+  font-weight: 1000;
   border: none;
-  box-shadow: 0 5px 29px #ea433589, 0 1.5px 8px #fff8;
+  box-shadow: 0 7px 34px #fa7a2433, 0 2px 17px #f25fef2d;
   cursor: pointer;
   outline: none;
   margin-bottom: 23px;
   margin-top: 5px;
-  animation: btn-pop 1.25s cubic-bezier(.75,.15,.23,1.35) 1.35s backwards, btn-pulse 2.6s infinite 2.1s;
+  animation: btn-pop 1.25s cubic-bezier(.75,.15,.23,1.35) 1.35s backwards, cheerful-bounce 1.4s infinite alternate, btn-pulse 2.6s infinite 2.1s;
   transition: box-shadow 0.19s, background 0.21s, transform 0.16s;
+  position: relative;
+  overflow: visible;
+  z-index: 23;
 }
 .landing-start-btn:hover,
 .landing-start-btn:focus-visible {
-  background: linear-gradient(90deg, #ea4335 19%, #fbbc05 97%);
+  background: linear-gradient(89deg, #ea4335 16%, #f25fef 48%, #34a853 110%);
   color: #ffffff;
-  box-shadow: 0 7px 50px #ea433577;
-  transform: scale(1.065) rotate(-1deg);
+  box-shadow: 0 11px 60px #fa7a2467,0 1.5px 21px #fbbc0557;
+  transform: scale(1.135) rotate(-2deg);
+  outline: none;
+}
+.lively-wiggle {
+  animation: wiggly-landing-btn 1.88s infinite alternate cubic-bezier(.41,.7,.75,1.21);
+}
+
+@keyframes cheerful-bounce {
+  0% { transform: scale(1) rotate(-2deg);}
+  21% { transform: scale(1.06, 1.02) rotate(7deg);}
+  39% { transform: scale(1.05,1.1) rotate(-7deg);}
+  45% { transform: scale(1.13,1.04) rotate(4deg);}
+  62% { transform: scale(0.97, 1.07) rotate(-8deg);}
+  100% { transform: scale(1) rotate(-1deg);}
+}
+@keyframes wiggly-landing-btn {
+  0%   { transform: scale(1) rotate(-1.9deg);}
+  10%  { transform: scale(1.1) rotate(4deg);}
+  24%  { transform: scale(1.12,1) rotate(-6deg);}
+  34%  { transform: scale(1.03,1.16) rotate(6deg);}
+  54%  { transform: scale(0.96, 1.12) rotate(-7deg);}
+  100% { transform: scale(1) rotate(-1.3deg);}
+}
+
+/* Burst confetti effect on press */
+.confetti-burst-active::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  left: 50%; top: 49%;
+  width: 0; height: 0;
+  border-radius: 60%;
+  background:
+    radial-gradient(circle, #fbbc05 14%, transparent 75%),
+    radial-gradient(circle, #ea4335 15%, transparent 65%),
+    radial-gradient(circle, #34a853 14%, transparent 84%),
+    radial-gradient(circle, #f25fef 18%, transparent 60%);
+  box-shadow:
+    0 2px 21px #fffbe9bb,
+    23px -14px 0 -2px #ea4335de,
+    -13px 21px 0 -3px #fbbc05a5,
+    19px 9px 0 -3px #f25fefd5,
+    0 33px 0 -1px #34a853cc,
+    -23px -19px 0 -4px #ffe156dd;
+  opacity: 0.82;
+  animation: confetti-burst 0.84s cubic-bezier(.43,1.08,.7,1.19) forwards;
+}
+@keyframes confetti-burst {
+  0%    { width: 0; height: 0; opacity: 1;}
+  40%   { width: 82px; height: 82px; opacity: 0.95;}
+  76%   { width: 101px; height: 101px; opacity: 0.87;}
+  100%  { width: 0; height: 0; opacity: 0;}
+}
+
+.cheerful-emoji {
+  margin-right: 0.6em;
+  font-size: 1.13em;
+  vertical-align: sub;
+  filter: drop-shadow(0 2px 6px #fee44066);
 }
 @keyframes btn-pop {
   from { opacity: 0; transform: scale(0.62);}
