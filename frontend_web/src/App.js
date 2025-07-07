@@ -148,9 +148,16 @@ function App() {
   // (Second set of duplicate useEffect blocks REMOVED)
 
   // --- Only after all hooks, conditionally render ---
+  // PUBLIC_INTERFACE
+  // Ensures that starting always works even if sessionStorage is unavailable (privacy/strict/test mode)
   const handleLandingStart = () => {
     setStarted(true);
-    sessionStorage.setItem("started", "true");
+    try {
+      sessionStorage.setItem("started", "true");
+    } catch (e) {
+      // If sessionStorage fails (ex: browser privacy mode), fallback to localState
+      // Optionally, you could show a warning if needed
+    }
   };
   if (!started) {
     // Dev-only utility: Uncomment the line below to forcibly reset state for testing
