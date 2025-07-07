@@ -88,14 +88,7 @@ function ApiDebugPanel() {
         <pre style={{ margin: 0, background: "#feeee8", borderRadius: 7, fontSize: 13, padding: 8, overflowX: "auto", color: "#ea4335" }}>
           {error ? String(error) : "--"}
         </pre>
-        {(error && (typeof error === "string") && (error.match(/quota|key|invalid/i))) &&
-          <div style={{
-            marginTop: 7, background: "#fee", color: "#b11318", padding: "4px 9px", borderRadius: 8, fontWeight: 700, fontSize: "0.98em"
-          }}>
-            Spoonacular API quota exceeded or invalid key! Check your API usage.<br />
-            <a href="https://spoonacular.com/food-api/docs#Errors" target="_blank" rel="noreferrer">Docs: Spoonacular API Errors</a>
-          </div>
-        }
+        {/* For TheMealDB, no API key/quota errors expected */}
       </div>
     </div>
   );
@@ -155,26 +148,20 @@ function App() {
   };
 
   // PUBLIC_INTERFACE
-  // Handles API call to get live recipe suggestions from Spoonacular API (deeply instrumented for network debugging + fallback patch)
+  // PUBLIC_INTERFACE
+  // Handles API call to get live recipe suggestions from TheMealDB API (by ingredients)
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
     setSelectedRecipe(null);
 
-    // Deep LOGGING: Output ingredientLists, selection, and types
-    console.log("[DEEP-API-LOG] Raw ingredientList state:", ingredientList);
+    // Collect selected ingredients
     const includedIngredientsArr = ingredientList.filter((item) => item.selected);
-    console.log("[DEEP-API-LOG] Filtered selected ingredientList array:", includedIngredientsArr);
-
     const includedIngredients = includedIngredientsArr
       .map((item) => item.name)
       .join(",");
 
-    // LOGGING: Outbound request params and what will be sent to Spoonacular
-    console.log("[DEEP-API-LOG] IncludedIngredients for search STRING:", includedIngredients);
-    console.log("[DEEP-API-LOG] Outbound ingredientList array (for API):", JSON.stringify(includedIngredientsArr, null, 2));
-
-    // API DEBUG STATE: initialize/clear before run
+    // API debug state: initialize/clear before run
     setApiDebug({ request: null, response: null, error: null });
 
     if (!includedIngredients) {
@@ -182,443 +169,175 @@ function App() {
       setApiDebug({
         request: null,
         response: null,
-        error: "No included ingredients selected for search."
+        error: "No included ingredients selected for search.",
       });
       alert("Please select at least one ingredient before searching for recipes.");
       return;
     }
 
-    // Use provided API key directly for now (NOTE: not safe for prod!)
-    const apiKey = "dc49e1088db742eea575fd4596dee395";
-    // Track the current request payload for debug panel
+    // TheMealDB: Lookup by ingredient only supports one at a time, we'll OR all
+    // for demo, get matches for first ingredient only
+    const firstIngredient = includedIngredientsArr[0].name;
+
+    const apiListUrl = `https://www.themealdb.com/api/json/v1/1/filter.php?i=${encodeURIComponent(firstIngredient)}`;
     let debugRequest = {
-      type: "complexSearch",
-      url: "",
+      type: "TheMealDB-multi-ingredient",
+      url: apiListUrl,
       method: "GET",
       includedIngredients,
       headers: {},
-      apiKey
+      ingredientArray: includedIngredientsArr,
+      ingredientInputField: ingredientInput,
+      timestamp: new Date().toISOString(),
     };
 
     try {
-      // 1. Search recipes by ingredients (complexSearch)
-      const searchUrl = `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
-        includedIngredients
-      )}&number=6&instructionsRequired=true&apiKey=${apiKey}`;
-      debugRequest.url = searchUrl;
-      debugRequest.headers = { "X-No-Headers-In-Fetch": "browser fetch omits user headers" };
-      debugRequest.fullQuery = `${searchUrl}`;
-      debugRequest.ingredientArray = includedIngredientsArr;
-      debugRequest.ingredientInputField = ingredientInput;
-      debugRequest.timestamp = new Date().toISOString();
+      // 1. Search for meals containing first ingredient
+      const resp = await fetch(apiListUrl);
+      let respJson = await resp.json();
+      setApiDebug({ request: debugRequest, response: respJson, error: null });
 
-      // Log all request params and url with key in console
-      // EXPOSING KEY - for dev debug only!
-      window._lastSpoonacularRequest = debugRequest;
-      console.log("[DEEP-API-LOG] => Outbound Spoonacular complexSearch API request:", debugRequest);
-
-      const searchResp = await fetch(searchUrl);
-
-      // Log entire response status and headers
-      console.log("[DEEP-API-LOG] <= complexSearch response: status:", searchResp.status, "ok:", searchResp.ok, "url:", searchUrl);
-      let searchDebugHeaders = {};
-      try {
-        for (const [k, v] of searchResp.headers.entries()) {
-          searchDebugHeaders[k] = v;
-          console.log(`[DEEP-API-LOG] searchResp header: ${k}:`, v);
-        }
-      } catch (_e) {}
-      debugRequest.headers = searchDebugHeaders;
-
-      // Capture critical error codes: 401, 402, quota errors, etc.
-      if ([401, 402, 403, 429].includes(searchResp.status)) {
-        let errTxt = "";
-        try { errTxt = await searchResp.text(); } catch {}
-        let errMsg = `Spoonacular API critical error (${searchResp.status}): ${errTxt}`;
-        setApiDebug({
-          request: debugRequest,
-          response: null,
-          error: errMsg
-        });
-        console.error("[DEEP-API-LOG] Spoonacular API HTTP Error", searchResp.status, errTxt);
-        let tryJson = null;
-        try { tryJson = JSON.parse(errTxt); } catch {}
-        if (tryJson && tryJson.message) {
-          errMsg += `\n[API.message] ${tryJson.message}`;
-        }
-        // Display error visibly in UI as well, in .error
-        setRecipes([{
-          id: "spoonacular-critical-api-error",
-          name: "Spoonacular API Auth/Quota Error",
-          image: DUMMY_IMG,
-          ingredients: [],
-          steps: [],
-          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-          tags: [],
-          error: "API Error: " + errMsg
-        }]);
-        setLoading(false);
-        alert("Spoonacular API returned an authentication, quota, or permission error. See Debug Log.");
-        return;
-      }
-
-      let responseTextForDebug;
-      let searchData;
-      try {
-        responseTextForDebug = await searchResp.clone().text();
-        // Defensive: try parsing json after cloning .text()
-        searchData = JSON.parse(responseTextForDebug);
-      } catch (errParse) {
-        try {
-          searchData = await searchResp.json();
-        } catch (jsonErr) {
-          setApiDebug({
-            request: debugRequest,
-            response: responseTextForDebug,
-            error: "API response unparseable as JSON: " + (jsonErr?.message || String(jsonErr))
-          });
-          setRecipes([{
-            id: "fail-json",
-            name: "Spoonacular API JSON error",
+      if (!respJson.meals || respJson.meals.length === 0) {
+        setRecipes([
+          {
+            id: "themealdb-no-results",
+            name: "No Recipes Found",
             image: DUMMY_IMG,
             ingredients: [],
             steps: [],
-            nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+            nutrition: null,
             tags: [],
-            error: "API response could not be parsed as JSON. Try again later or check your ingredients."
-          }]);
-          setLoading(false);
-          alert("API returned unreadable response (JSON). Try again later or notify developer.");
-          return;
-        }
-      }
-      // Log raw API response (as text and as parsed JSON)
-      console.log("[DEEP-API-LOG] complexSearch raw response (text):", responseTextForDebug || "<unavailable>");
-      console.log("[DEEP-API-LOG] complexSearch response (JSON):", searchData);
-
-      setApiDebug({
-        request: debugRequest,
-        response: searchData,
-        error: null
-      });
-
-      // Show quota/invalid key/blocked as explicit UI error if present
-      if ("message" in (searchData||{}) && (searchData.message || "").match(/quota|key|invalid|access|permission|limit/i)) {
-        let apiMessage = searchData.message;
-        setApiDebug({
-          request: debugRequest,
-          response: searchData,
-          error: apiMessage
-        });
-        setRecipes([{
-          id: "spoonacular-api-message",
-          name: "API Error",
-          image: DUMMY_IMG,
-          ingredients: [],
-          steps: [],
-          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-          tags: [],
-          error: "Spoonacular API error: " + apiMessage
-        }]);
+            error: "No recipes found for these ingredients. Try fewer or different items.",
+          },
+        ]);
         setLoading(false);
-        alert("Spoonacular API error: " + apiMessage);
         return;
       }
 
-      // Show if non-array/empty results are returned
-      if (!searchData.results || !Array.isArray(searchData.results) || searchData.results.length === 0) {
-        setApiDebug({
-          request: debugRequest,
-          response: searchData,
-          error: "Empty results from API"
-        });
-        setRecipes([{
-          id: "no-results",
-          name: "No Recipes Found",
-          image: DUMMY_IMG,
-          ingredients: [],
-          steps: [],
-          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-          tags: [],
-          error: "No recipes returned for the selected ingredients. Try different ones, check for typos or API quota."
-        }]);
-        setLoading(false);
-        alert(
-          includedIngredients
-            ? "No recipes found for the selected ingredients. Try different ones or check for typos."
-            : "Please add and select at least one ingredient."
-        );
-        return;
-      }
+      // Only show 6 for UI (as formerly done)
+      const topMeals = respJson.meals.slice(0, 6);
 
-      // 2. For each recipe, fetch /information (detailed data) with deep logging
-      const recipesData = await Promise.all(
-        searchData.results.map(async (basicRecipe) => {
+      // 2. Fetch detailed info (instructions etc) for each
+      const details = await Promise.all(
+        topMeals.map(async (item) => {
           try {
-            const infoUrl = `https://api.spoonacular.com/recipes/${basicRecipe.id}/information?includeNutrition=true&apiKey=${apiKey}`;
-            let infoDebugRequest = {
-              url: infoUrl,
-              id: basicRecipe.id,
-              reqTime: new Date().toISOString(),
-              parentSearchId: debugRequest.url
-            };
-            console.log("[DEEP-API-LOG] => Outbound recipe/information API request:", infoDebugRequest);
+            const detailRes = await fetch(
+              `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${item.idMeal}`
+            );
+            const detailJson = await detailRes.json();
+            if (!detailJson.meals || !detailJson.meals[0]) throw new Error("No details found");
+            const meal = detailJson.meals[0];
 
-            const infoResp = await fetch(infoUrl);
-            let infoDebugHeaders = {};
-            try {
-              for (const [k, v] of infoResp.headers.entries()) {
-                infoDebugHeaders[k] = v;
-                console.log(`[DEEP-API-LOG] infoResp (${basicRecipe.id}) header: ${k}:`, v);
-              }
-            } catch (_e) {}
-
-            // Special: direct log for permissions, quota, etc.
-            if ([401,402,403,429].includes(infoResp.status)) {
-              let infoErrText = "";
-              try { infoErrText = await infoResp.text(); } catch{}
-              const critMsg = `Recipe info call error: [${infoResp.status}] ${infoErrText}`;
-              setApiDebug((old) => ({
-                ...(old||{}),
-                infoRecipe: { id: basicRecipe.id, url: infoUrl, status: infoResp.status, infoErrText: critMsg }
-              }));
-              console.error("[DEEP-API-LOG] Recipe info quota/key/permission error", critMsg);
-              return {
-                id: basicRecipe.id,
-                name: "Recipe unavailable (API error)",
-                image: basicRecipe.image,
-                prep_time: "--",
-                ingredients: ["Ingredients not available."],
-                steps: ["Instructions not available."],
-                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-                tags: [],
-                error: critMsg
-              };
-            }
-
-            let infoRawText;
-            let info;
-            try {
-              infoRawText = await infoResp.clone().text();
-              info = JSON.parse(infoRawText);
-            } catch (jsonErr) {
-              setApiDebug((old) => ({
-                ...(old||{}),
-                infoRecipe: { id: basicRecipe.id, url: infoUrl, infoJsonError: jsonErr?.message, infoRawText }
-              }));
-              console.error(`[DEEP-API-LOG] ERROR: .json() failed for recipe id=${basicRecipe.id}:`, jsonErr);
-              return {
-                id: basicRecipe.id,
-                name: "Recipe unavailable (JSON error)",
-                image: basicRecipe.image,
-                prep_time: "--",
-                ingredients: ["Ingredients not available."],
-                steps: ["Instructions not available."],
-                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-                tags: [],
-                error: "Could not parse recipe detail response for this recipe. Try another or retry.",
-              };
-            }
-            console.log(`[DEEP-API-LOG] <= Recipe info (${basicRecipe.id}) raw:`, infoRawText);
-            console.log(`[DEEP-API-LOG] Recipe info (${basicRecipe.id}):`, info);
-
-            // --- Extract stepwise instructions ---
+            // Instructions
             let steps = [];
-            if (info.analyzedInstructions && info.analyzedInstructions.length > 0) {
-              steps = info.analyzedInstructions[0].steps.map((s) => s.step).filter(Boolean);
-            } else if (typeof info.instructions === "string" && info.instructions.trim()) {
-              // Fallback: split on dot if no structured steps
-              steps = info.instructions.split(/(?<=\.)\s+/).filter((s) => s.trim().length > 0);
+            if (typeof meal.strInstructions === "string" && meal.strInstructions.trim()) {
+              steps = meal.strInstructions
+                .split(/\r?\n/)
+                .map((s) => s.trim())
+                .filter((s) => s.length > 2);
             }
-            if (steps.length === 0) steps = ["Stepwise instructions not available for this recipe."];
+            if (steps.length === 0) steps = ["Stepwise instructions not available."];
 
-            // --- Extract nutrition ---
-            let nutrition = { calories: null, carbs: null, fats: null, protein: null };
-            if (info.nutrition && Array.isArray(info.nutrition.nutrients)) {
-              for (const n of info.nutrition.nutrients) {
-                const lname = n.name.toLowerCase();
-                if (lname === "calories") nutrition.calories = Math.round(n.amount);
-                else if (lname === "carbohydrates") nutrition.carbs = Math.round(n.amount);
-                else if (lname === "fat" || lname === "fats") nutrition.fats = Math.round(n.amount);
-                else if (lname === "protein") nutrition.protein = Math.round(n.amount);
+            // Ingredients - TheMealDB provides up to 20 manually
+            let ingredients = [];
+            for (let idx = 1; idx <= 20; idx++) {
+              const nm = meal[`strIngredient${idx}`];
+              const amt = meal[`strMeasure${idx}`];
+              if (nm && nm.trim()) {
+                ingredients.push(
+                  `${nm.trim()}${amt && amt.trim() ? ` (${amt.trim()})` : ""}`
+                );
               }
             }
-            // Fallback: top-level fields or N/A if still null
-            if (nutrition.calories == null && info.calories) nutrition.calories = Math.round(info.calories);
-            ["carbs", "fats", "protein"].forEach((k) => {
-              if (nutrition[k] == null) nutrition[k] = 0;
-            });
-            if (nutrition.calories == null) nutrition.calories = 0;
+            if (ingredients.length === 0)
+              ingredients = ["Ingredients not available."];
 
-            // --- Smart tags ---
-            const lowerTitle = (info.title || "").toLowerCase();
+            // Smart tags (basic heuristics)
             const tags = [];
-            if (info.vegetarian || info.vegan) tags.push("Vegan");
-            if (nutrition.carbs < 25) tags.push("Low-Carb");
-            if (nutrition.protein > 15) tags.push("High Protein");
-            if (nutrition.calories < 350) tags.push("Healthy");
-            if (/nachos|fries|burger|chip|fried|junk/.test(lowerTitle)) tags.push("Junk");
-            if (
-              /sugar|syrup|honey|sweet|dessert|pie|cake/.test(lowerTitle) ||
-              nutrition.carbs > 35
-            ) {
-              tags.push("Avoid for Diabetics");
-            }
+            if ((meal.strTags || "").toLowerCase().includes("vegan")) tags.push("Vegan");
+            if ((meal.strCategory || "").toLowerCase().includes("vegan")) tags.push("Vegan");
+            if ((meal.strCategory || "").toLowerCase().includes("vegetarian")) tags.push("Vegan");
+            if ((meal.strTags || "").toLowerCase().includes("healthy")) tags.push("Healthy");
+            if ((meal.strMeal || "").toLowerCase().match(/fried|burger|chip|junk/)) tags.push("Junk");
+            if ((meal.strMeal || "").toLowerCase().match(/protein/)) tags.push("High Protein");
+            // no reliable way to estimate carbs/fats without nutrition
 
-            // --- Ingredients list ---
-            let ingredientsList;
-            if (Array.isArray(info.extendedIngredients) && info.extendedIngredients.length > 0) {
-              ingredientsList = info.extendedIngredients.map(
-                (i) =>
-                  `${i.original || i.name}${i.amount ? ` (${Number(i.amount).toFixed(1)}${i.unit ? " " + i.unit : ""})` : ""}`
-              );
-            } else if (Array.isArray(info.ingredients) && info.ingredients.length > 0) {
-              ingredientsList = info.ingredients.map((i) => i.original || i.name || i);
-            } else {
-              ingredientsList = info.summary ? [info.summary] : ["Ingredients not available."];
-            }
-
-            // PATCH/LOGGING: If mapping to UI structure fails, log in both console and UI error/debug state
-            if (!ingredientsList || !Array.isArray(ingredientsList)) {
-              const mappingErrorMsg = `[DEEP-API-LOG] Mapping ingredients to recipe UI array failed. info.extendedIngredients: ${JSON.stringify(info.extendedIngredients)}, info.ingredients: ${JSON.stringify(info.ingredients)}, info: ${JSON.stringify(info)}`;
-              setApiDebug((old) => ({
-                ...(old || {}),
-                error: mappingErrorMsg
-              }));
-              console.error(mappingErrorMsg);
-              return {
-                id: basicRecipe.id,
-                name: "Mapping Error",
-                image: basicRecipe.image,
-                prep_time: "--",
-                ingredients: ["Unable to map ingredients from API response."],
-                steps: ["No instructions available."],
-                nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-                tags: [],
-                error: mappingErrorMsg
-              };
-            }
+            // Always warn about lack of nutrition
+            let nutrition = null;
 
             return {
-              id: info.id,
-              name: info.title || basicRecipe.title || "Unnamed",
-              image: info.image || basicRecipe.image,
-              prep_time: info.readyInMinutes || info.preparationMinutes || "--",
-              ingredients: ingredientsList,
+              id: meal.idMeal,
+              name: meal.strMeal,
+              image: meal.strMealThumb,
+              prep_time: meal.strArea || "--",
+              ingredients,
               steps,
-              nutrition,
+              nutrition, // null
               tags,
             };
-          } catch (innerErr) {
-            // Show fallback for this recipe and log in both console/UI
-            setApiDebug((old) => ({
-              ...(old || {}),
-              infoRecipe: { id: basicRecipe.id, innerErr: innerErr?.message || String(innerErr) }
-            }));
-            console.error("[DEEP-API-LOG] Error loading recipe details for id", basicRecipe.id, innerErr);
+          } catch (err) {
             return {
-              id: basicRecipe.id,
-              name: basicRecipe.title || "Recipe unavailable",
-              image: basicRecipe.image,
+              id: item.idMeal,
+              name: item.strMeal || "Recipe unavailable",
+              image: item.strMealThumb,
               prep_time: "--",
               ingredients: ["Ingredients not available."],
               steps: ["Instructions not available."],
-              nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+              nutrition: null,
               tags: [],
-              error: "Details could not be loaded. " + (innerErr && innerErr.message ? innerErr.message : "")
+              error: "Could not load recipe details.",
             };
           }
         })
       );
 
-      console.log("[DEEP-API-LOG] Final recipesData after Promise.all/map:", recipesData);
-
-      if (!Array.isArray(recipesData)) {
-        setApiDebug((old) => ({
-          ...(old || {}),
-          error: "recipesData not array after Promise.all"
-        }));
-        setRecipes([]);
-        alert("Internal error: result from recipe server not an array. See console for details.");
-        return;
-      }
-      // Defensive: filter out any undefined/null recipe results (shouldn't happen)
-      const cleanRecipes = recipesData.filter((r) => r && r.id && r.name);
-      if (recipesData.length !== cleanRecipes.length) {
-        setApiDebug((old) => ({
-          ...(old || {}),
-          error: `Filtered out ${recipesData.length - cleanRecipes.length} invalid results from recipesData`
-        }));
-        console.warn(
-          `[DEEP-API-LOG] Cleaned ${recipesData.length - cleanRecipes.length} undefined/null results from recipesData`,
-          recipesData
-        );
-      }
-      // PATCH: guarantee recipes shown if we got any valid, else show raw state/debug
-      if (cleanRecipes.length > 0) {
-        setRecipes(cleanRecipes);
-      } else {
-        const mappingFailMsg = `[DEEP-API-LOG] No valid recipes extracted, raw recipesData: ${JSON.stringify(recipesData)}`;
-        setApiDebug((old) => ({
-          ...(old || {}),
-          error: mappingFailMsg
-        }));
-        setRecipes([{
-          id: "no-valid",
-          name: "No Valid Recipes Found",
-          image: DUMMY_IMG,
-          ingredients: [],
-          steps: [],
-          nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-          tags: [],
-          error: "No complete or valid recipes could be parsed for this ingredient selection. (Check API quota and ingredients; see debug log below)."
-        }]);
-        console.error(mappingFailMsg);
+      // Defensive: show message if all failed
+      const clean = details.filter((r) => r && r.id && r.name);
+      if (clean.length > 0) setRecipes(clean);
+      else {
+        setRecipes([
+          {
+            id: "themealdb-no-valid",
+            name: "No Valid Recipes Found",
+            image: DUMMY_IMG,
+            ingredients: [],
+            steps: [],
+            nutrition: null,
+            tags: [],
+            error: "No complete recipes could be displayed for this search.",
+          },
+        ]);
       }
     } catch (e) {
       setRecipes([]);
-      let message = "[DEEP-API-LOG] ERROR in handleFindRecipes (main try/catch): " + (e?.message || String(e));
+      let message =
+        "[API-LOG] ERROR in handleFindRecipes: " + (e?.message || String(e));
       setApiDebug((old) => ({
         ...(old || {}),
-        error: message
+        error: message,
       }));
-      console.error(message);
-      // Show on page (user and developer)
-      setRecipes([{
-        id: "fail",
-        name: "Recipe Fetch failed!",
-        image: DUMMY_IMG,
-        ingredients: [],
-        steps: [],
-        nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
-        tags: [],
-        error:
-          "Failed to fetch recipes. " +
-          (e?.message || "Unknown error. The Spoonacular API may have reached its quota or the key is invalid. See console for full details."),
-      }]);
-      // Special: if error text mentions quota or invalid key, output to log with a fix.
-      if (
-        (e?.message && (e.message.includes("quota") || e.message.includes("key"))) ||
-        /quota|key/i.test(e?.toString?.() || "")
-      ) {
-        setApiDebug((old) => ({
-          ...(old || {}),
-          error: "Spoonacular API quota may be exceeded or API key is invalid."
-        }));
-        console.warn(
-          "[DEEP-API-LOG][UserHelp] Spoonacular API quota may be exceeded or API key is invalid. See https://spoonacular.com/food-api/docs#Errors for more info or request a new key."
-        );
-      }
+      setRecipes([
+        {
+          id: "fail",
+          name: "Recipe Fetch failed!",
+          image: DUMMY_IMG,
+          ingredients: [],
+          steps: [],
+          nutrition: null,
+          tags: [],
+          error:
+            "Failed to fetch recipes. " +
+            (e?.message || "Unknown error occurred contacting TheMealDB."),
+        },
+      ]);
       alert(
         "Failed to fetch recipes. " +
-        (e?.message ? e.message : "The Spoonacular API may have reached its quota or key is invalid.")
+          (e?.message
+            ? e.message
+            : "Unknown error occurred contacting TheMealDB.")
       );
     } finally {
       setLoading(false);
-      // Log most recent recipes state
-      setTimeout(() => {
-        console.log("[DEEP-API-LOG] Post-fetch: Final recipes state in memory:", recipes);
-      }, 500);
     }
   };
 
@@ -732,7 +451,7 @@ function App() {
             <h2>Recipe Suggestions</h2>
             {loading && (
               <div className="loading" aria-live="polite">
-                Loading recipes from Spoonacular...
+                Loading recipes from TheMealDB...
               </div>
             )}
             {!loading && recipes.length === 0 && (
@@ -1030,37 +749,43 @@ function SmartTags({ tags }) {
   Always shown on recipes; showLabels prop can force left labels in modals.
 */
 function NutritionBars({ nutrition, showLabels }) {
+  // If no data, indicate in UI that nutrition is unavailable
+  if (!nutrition) {
+    return (
+      <div className="nutrition-bars enhanced-nutrition" style={{ fontStyle: "italic", color: "#b12c2c", marginTop: 7 }}>
+        Nutrition breakdown not available for this recipe.
+      </div>
+    );
+  }
   // nutrition: {calories, carbs, fats, protein}
-  if (!nutrition) return null;
-  // Prepare all macro stats; keep max values reasonable to cap bars for common recipes
   const stats = [
     {
       key: "calories",
       label: "Calories",
       max: 700,
       getDisplay: v => `${v} kcal`,
-      help: "Total calories (kcalories)"
+      help: "Total calories (kcalories)",
     },
     {
       key: "carbs",
       label: "Carbs",
       max: 60,
       getDisplay: v => `${v} g`,
-      help: "Carbohydrates (grams)"
+      help: "Carbohydrates (grams)",
     },
     {
       key: "fats",
       label: "Fats",
       max: 40,
       getDisplay: v => `${v} g`,
-      help: "Fats (grams)"
+      help: "Fats (grams)",
     },
     {
       key: "protein",
       label: "Protein",
       max: 40,
       getDisplay: v => `${v} g`,
-      help: "Protein (grams)"
+      help: "Protein (grams)",
     },
   ];
   return (
@@ -1078,7 +803,7 @@ function NutritionBars({ nutrition, showLabels }) {
                 minWidth: 90,
                 fontWeight: 700,
                 color: getBarColor(stat.key),
-                letterSpacing: stat.key === "calories" ? "0.5px" : "0"
+                letterSpacing: stat.key === "calories" ? "0.5px" : "0",
               }}
             >
               {stat.label}
@@ -1091,12 +816,12 @@ function NutritionBars({ nutrition, showLabels }) {
                   backgroundColor: getBarColor(stat.key),
                   color: stat.key === "calories" ? "#fff8" : "#fff",
                   border: "1.5px solid #fff3",
-                  position: "relative"
+                  position: "relative",
                 }}
                 aria-label={`${stat.label}: ${value}${stat.key === "calories" ? " kcal" : " g"}`}
               >
                 {/* Value inside bar only for high %; else show outside */}
-                {(pct > 35) ? (
+                {pct > 35 ? (
                   <span className="nutrition-bar-text enhanced-text">
                     {stat.getDisplay(value)}
                   </span>
@@ -1110,10 +835,10 @@ function NutritionBars({ nutrition, showLabels }) {
                   fontWeight: 700,
                   color: "#23272a",
                   minWidth: 45,
-                  textAlign: "right"
+                  textAlign: "right",
                 }}
               >
-                {(pct <= 35) ? stat.getDisplay(value) : ""}
+                {pct <= 35 ? stat.getDisplay(value) : ""}
               </span>
             </div>
           </div>
