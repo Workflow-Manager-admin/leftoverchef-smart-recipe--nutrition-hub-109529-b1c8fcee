@@ -90,7 +90,7 @@ function App() {
   };
 
   // PUBLIC_INTERFACE
-  // Handles API call to get live recipe suggestions from Spoonacular API
+  // Handles API call to get live recipe suggestions from Spoonacular API (REFINED: fetch full details for each result to guarantee nutrition + steps)
   const handleFindRecipes = async () => {
     setLoading(true);
     setRecipes([]); // Clear old
@@ -102,95 +102,115 @@ function App() {
       .map((item) => item.name)
       .join(",");
 
-    const apiKey = process.env.REACT_APP_SPOONACULAR_API_KEY;
+    // Use provided API key directly for now (NOTE: not safe for prod!)
+    const apiKey = "dc49e1088db742eea575fd4596dee395";
 
-    // Fetch from Spoonacular API (returning recipes with images and details)
     try {
-      // Step 1: Search for recipes matching ingredients
+      // 1. Search recipes by ingredient (only fetch light info & IDs first)
       const searchResp = await fetch(
         `https://api.spoonacular.com/recipes/complexSearch?includeIngredients=${encodeURIComponent(
           includedIngredients
-        )}&number=6&addRecipeInformation=true&instructionsRequired=true&fillIngredients=true&apiKey=${apiKey}`
+        )}&number=6&instructionsRequired=true&apiKey=${apiKey}`
       );
       if (!searchResp.ok) throw new Error("API connection failed");
       const searchData = await searchResp.json();
-      // Step 2: For each recipe, fetch details including instructions if needed
-      const recipesData = await Promise.all(
-        (searchData.results || []).map(async (recipe) => {
-          // Instructions are included if addRecipeInformation=true, otherwise fetch details:
-          let recipeDetails = recipe;
-          if (!recipe.analyzedInstructions || recipe.analyzedInstructions.length === 0) {
-            // Get details endpoint as fallback
-            const detailResp = await fetch(
-              `https://api.spoonacular.com/recipes/${recipe.id}/information?apiKey=${apiKey}`
-            );
-            recipeDetails = await detailResp.json();
-          }
-          // Compose steps/instructions
-          let steps = [];
-          if (recipeDetails.analyzedInstructions && recipeDetails.analyzedInstructions.length > 0) {
-            steps =
-              recipeDetails.analyzedInstructions[0].steps.map((s) => s.step) ||
-              [];
-          } else if (typeof recipeDetails.instructions === "string") {
-            // Fallback: split by periods if no structured instructions
-            steps =
-              recipeDetails.instructions
-                .split(/(?<=\.)\s+/)
-                .filter((s) => s.trim().length > 0);
-          }
-          // Compose nutrition information: use "nutrition" if present, otherwise estimate basic macros
-          let nutrition = { calories: 0, carbs: 0, fats: 0, protein: 0 };
-          if (
-            recipeDetails.nutrition &&
-            recipeDetails.nutrition.nutrients
-          ) {
-            for (const n of recipeDetails.nutrition.nutrients) {
-              if (n.name.toLowerCase().includes("calories")) nutrition.calories = Math.round(n.amount);
-              if (n.name.toLowerCase().includes("carbohydrate")) nutrition.carbs = Math.round(n.amount);
-              if (n.name.toLowerCase().includes("fat")) nutrition.fats = Math.round(n.amount);
-              if (n.name.toLowerCase().includes("protein")) nutrition.protein = Math.round(n.amount);
-            }
-          } else if (recipeDetails.calories) {
-            // Sometimes calories is available as a top-level field
-            nutrition.calories = Math.round(recipeDetails.calories);
-          }
-          // Prepare smart tags as a basic example (could be improved with more analysis)
-          const lowerTitle = (recipeDetails.title || "").toLowerCase();
-          const tags = [];
-          if (recipeDetails.vegetarian) tags.push("Vegan");
-          if (nutrition.carbs < 25) tags.push("Low-Carb");
-          if (nutrition.protein > 15) tags.push("High Protein");
-          if (nutrition.calories < 350) tags.push("Healthy");
-          if (/nachos|fries|burger|chip|fried|junk/.test(lowerTitle)) tags.push("Junk");
-          if (
-            /sugar|syrup|honey|sweet|dessert|pie|cake/.test(lowerTitle) ||
-            nutrition.carbs > 35
-          )
-            tags.push("Avoid for Diabetics");
+      if (!searchData.results || searchData.results.length === 0) {
+        setRecipes([]);
+        setLoading(false);
+        return;
+      }
 
-          return {
-            id: recipeDetails.id,
-            name: recipeDetails.title,
-            image: recipeDetails.image,
-            prep_time:
-              recipeDetails.readyInMinutes || recipeDetails.preparationMinutes || "--",
-            ingredients:
-              recipeDetails.extendedIngredients && recipeDetails.extendedIngredients.length > 0
-                ? recipeDetails.extendedIngredients.map(
-                    (i) =>
-                      `${i.original || i.name} ${
-                        i.amount
-                          ? `(${Number(i.amount).toFixed(1)}${i.unit ? " " + i.unit : ""})`
-                          : ""
-                      }`
-                  )
-                : recipeDetails.ingredients ||
-                  (recipeDetails.summary ? [recipeDetails.summary] : []),
-            steps: steps.length > 0 ? steps : ["Instructions not available."],
-            nutrition,
-            tags,
-          };
+      // 2. For each recipe, fetch /recipes/{id}/information to guarantee detailed steps & nutrition
+      const recipesData = await Promise.all(
+        searchData.results.map(async (basicRecipe) => {
+          try {
+            const infoResp = await fetch(
+              `https://api.spoonacular.com/recipes/${basicRecipe.id}/information?includeNutrition=true&apiKey=${apiKey}`
+            );
+            if (!infoResp.ok) throw new Error("Missing info");
+            const info = await infoResp.json();
+
+            // --- Extract stepwise instructions ---
+            let steps = [];
+            if (info.analyzedInstructions && info.analyzedInstructions.length > 0) {
+              steps = info.analyzedInstructions[0].steps.map((s) => s.step).filter(Boolean);
+            } else if (typeof info.instructions === "string" && info.instructions.trim()) {
+              // Fallback: split on dot if no structured steps
+              steps = info.instructions.split(/(?<=\.)\s+/).filter((s) => s.trim().length > 0);
+            }
+            if (steps.length === 0) steps = ["Stepwise instructions not available for this recipe."];
+
+            // --- Extract nutrition ---
+            // Find values (kcal, grams) and label accordingly
+            let nutrition = { calories: null, carbs: null, fats: null, protein: null };
+            if (info.nutrition && Array.isArray(info.nutrition.nutrients)) {
+              for (const n of info.nutrition.nutrients) {
+                const lname = n.name.toLowerCase();
+                if (lname === "calories") nutrition.calories = Math.round(n.amount); // kcal
+                else if (lname === "carbohydrates") nutrition.carbs = Math.round(n.amount); // g
+                else if (lname === "fat" || lname === "fats") nutrition.fats = Math.round(n.amount);
+                else if (lname === "protein") nutrition.protein = Math.round(n.amount);
+              }
+            }
+            // Fallback: top-level fields or N/A if still null
+            if (nutrition.calories == null && info.calories) nutrition.calories = Math.round(info.calories);
+            ["carbs", "fats", "protein"].forEach((k) => {
+              if (nutrition[k] == null) nutrition[k] = 0;
+            });
+            if (nutrition.calories == null) nutrition.calories = 0;
+
+            // --- Smart tags ---
+            const lowerTitle = (info.title || "").toLowerCase();
+            const tags = [];
+            if (info.vegetarian || info.vegan) tags.push("Vegan");
+            if (nutrition.carbs < 25) tags.push("Low-Carb");
+            if (nutrition.protein > 15) tags.push("High Protein");
+            if (nutrition.calories < 350) tags.push("Healthy");
+            if (/nachos|fries|burger|chip|fried|junk/.test(lowerTitle)) tags.push("Junk");
+            if (
+              /sugar|syrup|honey|sweet|dessert|pie|cake/.test(lowerTitle) ||
+              nutrition.carbs > 35
+            ) {
+              tags.push("Avoid for Diabetics");
+            }
+
+            // --- Ingredients list ---
+            let ingredientsList;
+            if (Array.isArray(info.extendedIngredients) && info.extendedIngredients.length > 0) {
+              ingredientsList = info.extendedIngredients.map(
+                (i) =>
+                  `${i.original || i.name}${i.amount ? ` (${Number(i.amount).toFixed(1)}${i.unit ? " " + i.unit : ""})` : ""}`
+              );
+            } else if (Array.isArray(info.ingredients) && info.ingredients.length > 0) {
+              ingredientsList = info.ingredients.map((i) => i.original || i.name || i);
+            } else {
+              ingredientsList = info.summary ? [info.summary] : ["Ingredients not available."];
+            }
+
+            return {
+              id: info.id,
+              name: info.title || basicRecipe.title || "Unnamed",
+              image: info.image || basicRecipe.image,
+              prep_time: info.readyInMinutes || info.preparationMinutes || "--",
+              ingredients: ingredientsList,
+              steps,
+              nutrition,
+              tags,
+            };
+          } catch (innerErr) {
+            // Gracefully show fallback for this recipe if fetch failed
+            return {
+              id: basicRecipe.id,
+              name: basicRecipe.title || "Recipe unavailable",
+              image: basicRecipe.image,
+              prep_time: "--",
+              ingredients: ["Ingredients not available."],
+              steps: ["Instructions not available."],
+              nutrition: { calories: 0, carbs: 0, fats: 0, protein: 0 },
+              tags: [],
+              error: "Details could not be loaded."
+            };
+          }
         })
       );
       setRecipes(recipesData);
@@ -410,7 +430,12 @@ function RecipeList({ recipes, onOpen, onFav, favorites, isFav }) {
   );
 }
 
-// RecipeDetailsModal: Shows selected recipe in detail
+/*
+  RecipeDetailsModal: Shows selected recipe in detail.
+  - Stepwise instructions (gracefully show message if missing)
+  - Nutrition values always labeled (g/kcal)
+  - Handles missing data gracefully
+*/
 function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
   if (!recipe) return null;
   return (
@@ -429,22 +454,34 @@ function RecipeDetailsModal({ recipe, onClose, onFav, isFav }) {
           className="modal-img"
         />
         <h2>{recipe.name}</h2>
+        {recipe.error ? (
+          <div style={{ color: "#bb2124", fontWeight: 700, margin: "1em 0" }}>
+            {recipe.error}
+          </div>
+        ) : null}
         <SmartTags tags={recipe.tags} />
         <div className="modal-subtext">
           <span>Prep time: {recipe.prep_time} min</span>
         </div>
         <h4>Ingredients:</h4>
         <ul className="modal-ingredients-list">
-          {recipe.ingredients.map((ing, idx) => (
-            <li key={idx}>{ing}</li>
-          ))}
+          {(Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0) ?
+            recipe.ingredients.map((ing, idx) => (<li key={idx}>{ing}</li>)) :
+            <li className="muted">No ingredients available.</li>
+          }
         </ul>
         <h4>Instructions:</h4>
-        <ol className="modal-steps">
-          {recipe.steps.map((step, idx) => (
-            <li key={idx}>{step}</li>
-          ))}
-        </ol>
+        {(!Array.isArray(recipe.steps) || recipe.steps.length === 0 || (recipe.steps.length === 1 && !recipe.steps[0].trim())) ? (
+          <div className="muted" style={{ margin: "0.8em 0 1.1em" }}>
+            No instructions available for this recipe.
+          </div>
+        ) : (
+          <ol className="modal-steps">
+            {recipe.steps.map((step, idx) =>
+              <li key={idx}>{step}</li>
+            )}
+          </ol>
+        )}
         <h4>Nutritional Breakdown</h4>
         <NutritionBars nutrition={recipe.nutrition} showLabels />
         <button
